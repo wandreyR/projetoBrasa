@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 from .database import Base, engine, SessionLocal
 from . import models
 from .auth import hash_senha
-from .routers import cardapio, auth, pedidos, gerencial
+from .routers import cardapio, auth, pedidos, gerencial, estoque
 
 app = FastAPI(title="BRASA Pizzaria API", version="1.0.0")
 
@@ -27,6 +27,7 @@ app.include_router(cardapio.router)
 app.include_router(auth.router)
 app.include_router(pedidos.router)
 app.include_router(gerencial.router)
+app.include_router(estoque.router)
 
 
 def seed_data(db: Session):
@@ -115,6 +116,91 @@ def seed_data(db: Session):
         if not db.query(models.Usuario).filter(models.Usuario.email == email).first():
             db.add(models.Usuario(nome=nome, email=email, senha_hash=hash_senha(senha), cargo=cargo))
 
+    db.commit()
+    seed_estoque(db)
+
+
+# Estoque inicial de exemplo — ajuste as quantidades na tela de estoque.
+# (nome, unidade, quantidade, bebida ligada)
+ESTOQUE_INICIAL = [
+    ("Coca-Cola 350ml (lata)", models.UnidadeEstoque.un, 48, "Coca-Cola 350ml"),
+    ("Guaraná 350ml (lata)", models.UnidadeEstoque.un, 48, "Guaraná 350ml"),
+    ("Suco Natural (copo)", models.UnidadeEstoque.un, 30, "Suco Natural"),
+    ("Água Mineral (garrafa)", models.UnidadeEstoque.un, 36, "Água Mineral"),
+    ("Caixa de pizza", models.UnidadeEstoque.un, 200, None),
+    ("Farinha de trigo", models.UnidadeEstoque.kg, 50, None),
+    ("Farinha integral", models.UnidadeEstoque.kg, 15, None),
+    ("Molho de tomate", models.UnidadeEstoque.kg, 20, None),
+    ("Molho branco", models.UnidadeEstoque.kg, 12, None),
+    ("Molho barbecue", models.UnidadeEstoque.kg, 12, None),
+    ("Mussarela", models.UnidadeEstoque.kg, 30, None),
+    ("Calabresa", models.UnidadeEstoque.kg, 15, None),
+    ("Frango desfiado", models.UnidadeEstoque.kg, 15, None),
+    ("Presunto", models.UnidadeEstoque.kg, 12, None),
+    ("Bacon", models.UnidadeEstoque.kg, 12, None),
+    ("Champignon", models.UnidadeEstoque.kg, 10, None),
+    ("Cebola roxa", models.UnidadeEstoque.kg, 10, None),
+    ("Pimentão", models.UnidadeEstoque.kg, 10, None),
+    ("Azeitona", models.UnidadeEstoque.kg, 10, None),
+    ("Milho", models.UnidadeEstoque.kg, 10, None),
+    ("Catupiry", models.UnidadeEstoque.kg, 12, None),
+    ("Gorgonzola", models.UnidadeEstoque.kg, 10, None),
+    ("Rúcula", models.UnidadeEstoque.kg, 10, None),
+    ("Tomate seco", models.UnidadeEstoque.kg, 10, None),
+    ("Palmito", models.UnidadeEstoque.kg, 10, None),
+]
+
+# Receita da pizza montada: ingrediente → (item de estoque, kg por pizza P, M, G)
+MASSA, MOLHO, QUEIJO, CARNE, LEGUME = (0.15, 0.25, 0.35), (0.06, 0.09, 0.12), (0.10, 0.15, 0.20), (0.06, 0.09, 0.12), (0.03, 0.05, 0.07)
+CONSUMO_INICIAL = {
+    "Tradicional": ("Farinha de trigo", MASSA),
+    "Fina": ("Farinha de trigo", (0.12, 0.20, 0.28)),
+    "Integral": ("Farinha integral", MASSA),
+    "Molho de tomate": ("Molho de tomate", MOLHO),
+    "Branco (alho e azeite)": ("Molho branco", MOLHO),
+    "Barbecue": ("Molho barbecue", MOLHO),
+    "Mussarela": ("Mussarela", QUEIJO),
+    "Catupiry": ("Catupiry", CARNE),
+    "Gorgonzola": ("Gorgonzola", CARNE),
+    "Calabresa": ("Calabresa", CARNE),
+    "Frango": ("Frango desfiado", CARNE),
+    "Presunto": ("Presunto", CARNE),
+    "Bacon": ("Bacon", CARNE),
+    "Champignon": ("Champignon", LEGUME),
+    "Cebola roxa": ("Cebola roxa", LEGUME),
+    "Pimentão": ("Pimentão", LEGUME),
+    "Azeitona": ("Azeitona", LEGUME),
+    "Milho": ("Milho", LEGUME),
+    "Rúcula": ("Rúcula", LEGUME),
+    "Tomate seco": ("Tomate seco", LEGUME),
+    "Palmito": ("Palmito", LEGUME),
+}
+
+
+def seed_estoque(db: Session):
+    """Cria o estoque de exemplo e a receita da pizza montada na primeira execução."""
+    if db.query(models.EstoqueItem).count() > 0:
+        return
+
+    bebidas = {b.nome: b.id for b in db.query(models.Bebida)}
+    itens = {}
+    for nome, unidade, qtd, bebida in ESTOQUE_INICIAL:
+        item = models.EstoqueItem(nome=nome, unidade=unidade, quantidade=qtd,
+                                  minimo=models.MINIMO_PADRAO[unidade], bebida_id=bebidas.get(bebida))
+        db.add(item)
+        itens[nome] = item
+    db.flush()
+
+    for item in itens.values():
+        db.add(models.MovimentacaoEstoque(estoque_item_id=item.id, tipo=models.TipoMovimentacao.ajuste,
+                                          quantidade=item.quantidade, saldo=item.quantidade,
+                                          observacao="Estoque inicial"))
+
+    ingredientes = {i.nome: i.id for i in db.query(models.Ingrediente)}
+    for ing_nome, (item_nome, (p, m, g)) in CONSUMO_INICIAL.items():
+        if ing_nome in ingredientes:
+            db.add(models.ConsumoIngrediente(ingrediente_id=ingredientes[ing_nome],
+                                             estoque_item_id=itens[item_nome].id, qtd_p=p, qtd_m=m, qtd_g=g))
     db.commit()
 
 

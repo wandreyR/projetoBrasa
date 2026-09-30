@@ -400,3 +400,170 @@ body.com-modal { overflow: hidden; }
 .form-despesa .btn { white-space: nowrap; }
 
 .estado-carregando { opacity: 0.5; pointer-events: none; transition: opacity 0.15s ease; }
+
+/* ---------- Aviso de estoque na cozinha ---------- */
+
+.aviso-estoque {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  background: rgba(212, 160, 23, 0.18);
+  border: 1px solid rgba(212, 160, 23, 0.6);
+  border-radius: var(--radius-m);
+  padding: 12px 16px;
+  margin-bottom: 16px;
+  font-size: 14px;
+  line-height: 1.45;
+}
+.aviso-estoque[hidden] { display: none; }
+.aviso-estoque > span:nth-child(2) { flex: 1; min-width: 220px; }
+.aviso-estoque .aviso-icone { font-size: 20px; }
+.aviso-estoque .btn { padding: 8px 14px; font-size: 13px; }
+
+/* ---------- Estoque ---------- */
+
+.resumo-estoque {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+  margin-bottom: 16px;
+}
+.resumo-estoque .kpi { cursor: pointer; border: 2px solid transparent; text-align: left; font: inherit; color: inherit; }
+.resumo-estoque .kpi[aria-pressed="true"] { border-color: var(--crust-dark); }
+.resumo-estoque .kpi .valor { font-size: clamp(22px, 3vw, 30px); }
+
+.barra-ferramentas {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  align-items: center;
+  margin-bottom: 16px;
+}
+.barra-ferramentas .busca {
+  flex: 1;
+  min-width: 180px;
+  font-family: var(--font-body);
+  font-size: 15px;
+  padding: 10px 12px;
+  border-radius: var(--radius-s);
+  border: 1px solid var(--line-dark);
+  background: var(--mozzarella);
+  color: var(--crust-dark);
+}
+.barra-ferramentas .tabs { margin: 0; padding: 0; }
+
+.estoque-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+.estoque-card {
+  background: var(--mozzarella);
+  border-radius: var(--radius-m);
+  box-shadow: var(--shadow-card);
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  border-left: 4px solid var(--ok);
+}
+.estoque-card[data-status="baixo"] { border-left-color: var(--st-pendente); }
+.estoque-card[data-status="zerado"] { border-left-color: var(--negativo); }
+
+.estoque-card .topo { display: flex; justify-content: space-between; gap: 8px; align-items: flex-start; }
+.estoque-card h3 { font-size: 15px; font-weight: 600; margin: 0; line-height: 1.3; }
+.estoque-card .vinculo { display: block; font-size: 12px; opacity: 0.6; font-weight: 400; margin-top: 2px; }
+
+.selo {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11.5px;
+  font-weight: 700;
+  padding: 3px 8px;
+  border-radius: 999px;
+  white-space: nowrap;
+  background: rgba(63, 122, 58, 0.14);
+  color: #2C5A28;
+}
+.selo[data-status="baixo"] { background: rgba(212, 160, 23, 0.22); color: #6B4E00; }
+.selo[data-status="zerado"] { background: rgba(154, 44, 23, 0.14); color: var(--negativo); }
+
+.estoque-card .qtd { font-family: var(--font-mono); font-weight: 700; font-size: 24px; }
+.estoque-card .qtd small { font-size: 12px; font-weight: 400; opacity: 0.6; margin-left: 6px; }
+
+.nivel { height: 6px; background: rgba(43, 24, 16, 0.08); border-radius: 3px; overflow: hidden; position: relative; }
+.nivel i { display: block; height: 100%; border-radius: 3px; background: var(--ok); }
+.estoque-card[data-status="baixo"] .nivel i { background: var(--st-pendente); }
+.estoque-card[data-status="zerado"] .nivel i { background: var(--negativo); }
+
+.estoque-card .acoes { display: flex; gap: 6px; flex-wrap: wrap; }
+.btn-mini {
+  font-size: 12.5px;
+  font-weight: 600;
+  padding: 7px 10px;
+  border-radius: var(--radius-s);
+  border: 1px solid var(--line-dark);
+  background: var(--semolina);
+}
+.btn-mini:hover { border-color: var(--crust-dark); }
+.btn-mini.entrada { background: rgba(63, 122, 58, 0.12); }
+.btn-mini.saida { background: rgba(193, 57, 31, 0.10); }
+.estoque-card .acoes .link-acao { margin-left: auto; }
+
+/* Diálogos (movimentar / cadastrar) */
+dialog.dialogo {
+  border: none;
+  border-radius: var(--radius-l);
+  padding: 0;
+  width: min(440px, calc(100vw - 32px));
+  background: var(--mozzarella);
+  color: var(--crust-dark);
+  box-shadow: var(--shadow-lift);
+}
+dialog.dialogo::backdrop { background: rgba(26, 15, 9, 0.7); }
+dialog.dialogo form { padding: 24px; display: flex; flex-direction: column; gap: 14px; }
+dialog.dialogo h2 { font-family: var(--font-display); font-size: 22px; margin: 0; }
+dialog.dialogo .sub { font-size: 13px; opacity: 0.7; margin: -8px 0 0; }
+dialog.dialogo .field select {
+  font-family: var(--font-body);
+  font-size: 15px;
+  padding: 11px 12px;
+  border-radius: var(--radius-s);
+  border: 1px solid var(--line-dark);
+  background: var(--semolina);
+  color: var(--crust-dark);
+}
+dialog.dialogo .dica { font-size: 12.5px; opacity: 0.7; margin: -6px 0 0; }
+dialog.dialogo .linha { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+dialog.dialogo .botoes { display: flex; gap: 8px; justify-content: flex-end; margin-top: 4px; }
+.previa-saldo { font-family: var(--font-mono); font-size: 13px; background: var(--semolina); border-radius: var(--radius-s); padding: 8px 10px; }
+
+/* Receita da pizza montada */
+details.painel > summary { cursor: pointer; list-style: none; }
+details.painel > summary::-webkit-details-marker { display: none; }
+details.painel > summary h2::after { content: ' ▸'; font-size: 16px; opacity: 0.5; }
+details.painel[open] > summary h2::after { content: ' ▾'; }
+.tabela input[type="number"], .tabela select {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  padding: 6px 8px;
+  border-radius: var(--radius-s);
+  border: 1px solid var(--line-dark);
+  background: var(--semolina);
+  color: var(--crust-dark);
+  width: 100%;
+  min-width: 70px;
+}
+.tabela select { font-family: var(--font-body); min-width: 150px; }
+.tabela .qtd-mov.pos { color: var(--ok); }
+.tabela .qtd-mov.neg { color: var(--negativo); }
+
+@media (max-width: 559px) {
+  .resumo-estoque { gap: 8px; }
+  .resumo-estoque .kpi { padding: 12px; }
+  .resumo-estoque .kpi .rotulo { font-size: 11.5px; }
+}

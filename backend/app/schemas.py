@@ -6,7 +6,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 
 from .models import (
     CategoriaPizza, TipoEntrega, StatusPedido, TipoItemPedido, TipoIngrediente, Cargo,
-    CategoriaDespesa,
+    CategoriaDespesa, UnidadeEstoque,
 )
 
 
@@ -66,6 +66,8 @@ class PedidoItemIn(BaseModel):
     preco_unitario: float = Field(gt=0, le=1000)
     quantidade: int = Field(gt=0, le=50)
     detalhes: Optional[str] = Field(default=None, max_length=500)
+    # Pizza montada: nomes da massa, molho e coberturas escolhidos (usados para baixar o estoque)
+    ingredientes: Optional[List[str]] = Field(default=None, max_length=30)
 
     @field_validator("tamanho", mode="before")
     @classmethod
@@ -217,3 +219,74 @@ class ResumoFinanceiro(BaseModel):
     por_dia: List[ResumoDia]
     top_itens: List[ResumoItem]
     despesas_por_categoria: List[ResumoCategoria]
+
+
+# ---------------------------------------------------------------------
+# Estoque
+# ---------------------------------------------------------------------
+
+class EstoqueItemIn(BaseModel):
+    model_config = ConfigDict(str_strip_whitespace=True)
+
+    nome: str = Field(min_length=2, max_length=120)
+    unidade: UnidadeEstoque
+    minimo: Optional[float] = Field(default=None, ge=0, le=100_000)  # vazio = padrão (20 un / 10 kg)
+    bebida_id: Optional[int] = None
+
+
+class EstoqueItemCriarIn(EstoqueItemIn):
+    quantidade: float = Field(default=0, ge=0, le=100_000)
+
+
+class EstoqueItemOut(BaseModel):
+    id: int
+    nome: str
+    unidade: UnidadeEstoque
+    quantidade: float
+    minimo: float
+    status: Literal["ok", "baixo", "zerado"]
+    bebida_id: Optional[int] = None
+    bebida_nome: Optional[str] = None
+    atualizado_em: Optional[datetime] = None
+
+
+class MovimentarIn(BaseModel):
+    model_config = ConfigDict(str_strip_whitespace=True)
+
+    tipo: Literal["entrada", "saida", "ajuste"]
+    # entrada/saída: quanto entrou ou saiu; ajuste: a nova contagem total
+    quantidade: float = Field(ge=0, le=100_000)
+    observacao: Optional[str] = Field(default=None, max_length=255)
+
+    @model_validator(mode="after")
+    def quantidade_positiva(self):
+        if self.tipo != "ajuste" and self.quantidade <= 0:
+            raise ValueError("Informe uma quantidade maior que zero")
+        return self
+
+
+class MovimentacaoOut(BaseModel):
+    id: int
+    estoque_item_id: int
+    item_nome: str
+    unidade: UnidadeEstoque
+    tipo: str
+    quantidade: float
+    saldo: float
+    pedido_id: Optional[int] = None
+    usuario_nome: Optional[str] = None
+    observacao: Optional[str] = None
+    criado_em: datetime
+
+
+class ConsumoIn(BaseModel):
+    estoque_item_id: Optional[int] = None  # None = ingrediente não baixa estoque
+    qtd_p: float = Field(default=0, ge=0, le=10)
+    qtd_m: float = Field(default=0, ge=0, le=10)
+    qtd_g: float = Field(default=0, ge=0, le=10)
+
+
+class ConsumoOut(ConsumoIn):
+    ingrediente_id: int
+    ingrediente_nome: str
+    ingrediente_tipo: TipoIngrediente

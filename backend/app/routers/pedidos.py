@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session, joinedload
 from .. import models, schemas
 from ..database import get_db, SessionLocal
 from ..auth import get_current_user, usuario_do_token
+from ..estoque_service import ajustar_por_mudanca_de_status, baixar_pedido, consumo_do_pedido, evento_estoque
 from ..tempo import hoje_local, inicio_do_dia_em_utc
 from ..websocket_manager import manager
 
@@ -126,6 +127,14 @@ async def criar_pedido(dados: schemas.PedidoIn, db: Session = Depends(get_db)):
     # Valida e precifica todos os itens ANTES de gravar qualquer coisa
     itens = [_resolver_item(db, item) for item in dados.itens]
 
+    # Nomes escolhidos na pizza montada (por posição do item), para baixar os kg do estoque
+    ingredientes_custom = {
+        idx: item.ingredientes
+        for idx, item in enumerate(dados.itens)
+        if item.tipo == models.TipoItemPedido.custom and item.ingredientes
+    }
+    consumo = consumo_do_pedido(db, itens, ingredientes_custom)
+
     subtotal = round(sum(i.preco_unitario * i.quantidade for i in itens), 2)
     taxa_entrega = TAXA_ENTREGA_PADRAO if dados.tipo_entrega == models.TipoEntrega.delivery else 0.0
 
@@ -158,7 +167,9 @@ async def criar_pedido(dados: schemas.PedidoIn, db: Session = Depends(get_db)):
             itens=itens,
         )
         db.add(pedido)
-        db.commit()  # cliente + pedido + itens numa única transação
+        db.flush()  # gera pedido.id para o histórico do estoque
+        estoque_mudou = baixar_pedido(db, pedido, consumo)
+        db.commit()  # cliente + pedido + itens + baixa de estoque numa única transação
     except SQLAlchemyError:
         db.rollback()
         raise HTTPException(status_code=500, detail="Não foi possível registrar o pedido. Tente novamente.")
@@ -168,6 +179,8 @@ async def criar_pedido(dados: schemas.PedidoIn, db: Session = Depends(get_db)):
 
     # O pedido já está salvo; o broadcast nunca derruba a resposta ao cliente
     await manager.broadcast({"evento": "novo_pedido", "pedido": _serializar_pedido(pedido)})
+    if estoque_mudou:
+        await manager.broadcast(evento_estoque(db))
 
     return _montar_pedido_out(pedido)
 
@@ -227,11 +240,16 @@ async def atualizar_status(
     if not pedido:
         raise HTTPException(status_code=404, detail="Pedido não encontrado")
 
+    status_anterior = pedido.status
     pedido.status = dados.status
+    # cancelou → devolve ao estoque o que foi baixado automaticamente; reabriu → baixa de novo
+    estoque_mudou = ajustar_por_mudanca_de_status(db, pedido, status_anterior, usuario_atual.id)
     db.commit()
     pedido = _carregar_pedido(db, pedido_id)
 
     await manager.broadcast({"evento": "status_atualizado", "pedido": _serializar_pedido(pedido)})
+    if estoque_mudou:
+        await manager.broadcast(evento_estoque(db))
 
     return _montar_pedido_out(pedido)
 

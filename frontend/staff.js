@@ -241,3 +241,91 @@ async function iniciarAreaEquipe({ cargos, titulo = 'Entrar', onEntrar }) {
     if (!(e instanceof ErroSessao)) abrirLogin(e.message);
   }
 }
+
+/* ---------- Tempo real (WebSocket compartilhado por cozinha e estoque) ---------- */
+
+// Atualiza o indicador <span id="conexao"><span class="dot"></span><span id="conexaoTexto"></span></span>
+function setConexao(estado, texto) {
+  const el = document.getElementById('conexao');
+  if (!el) return;
+  el.dataset.estado = estado;
+  document.getElementById('conexaoTexto').textContent = texto;
+}
+
+/**
+ * Mantém uma conexão com /ws/cozinha: heartbeat, reconexão com espera crescente
+ * e volta ao login se o token expirar (código 4401).
+ * onAbrir(): chamado a cada (re)conexão — bom lugar para recarregar os dados.
+ * onMensagem(msg): cada evento JSON recebido.
+ */
+function conectarTempoReal({ onAbrir, onMensagem }) {
+  let socket = null;
+  let tentativas = 0;
+  let timerPing = null;
+  let timerReconexao = null;
+
+  function conectar() {
+    const sessao = getSessao();
+    if (!sessao) return;
+    clearTimeout(timerReconexao);
+    setConexao('conectando', 'Conectando…');
+
+    const s = new WebSocket(`${WS_URL}/ws/cozinha?token=${encodeURIComponent(sessao.token)}`);
+    socket = s;
+
+    s.onopen = () => {
+      if (s !== socket) return;
+      tentativas = 0;
+      setConexao('online', 'Ao vivo');
+      clearInterval(timerPing);
+      timerPing = setInterval(() => s.readyState === WebSocket.OPEN && s.send('ping'), 25000);
+      if (onAbrir) onAbrir();
+    };
+
+    s.onmessage = (event) => {
+      if (s !== socket || event.data === 'pong') return;
+      let msg;
+      try { msg = JSON.parse(event.data); } catch (e) { return; }
+      onMensagem(msg);
+    };
+
+    s.onclose = (event) => {
+      if (s !== socket) return; // conexão antiga, substituída após novo login
+      clearInterval(timerPing);
+      if (event.code === 4401) {
+        // token expirado: não adianta reconectar, precisa logar de novo
+        limparSessao();
+        setConexao('offline', 'Sessão expirada');
+        abrirLogin('Sua sessão expirou. Entre novamente.');
+        return;
+      }
+      tentativas += 1;
+      const espera = Math.min(15000, 1000 * 2 ** (tentativas - 1));
+      setConexao('offline', `Reconectando em ${Math.round(espera / 1000)}s…`);
+      timerReconexao = setTimeout(conectar, espera);
+    };
+  }
+
+  return {
+    // (re)abre a conexão com o token atual — chamar após cada login
+    iniciar() {
+      const antigo = socket;
+      conectar();
+      if (antigo && antigo.readyState <= WebSocket.OPEN) antigo.close(1000);
+    },
+  };
+}
+
+/* ---------- Estoque: formatação compartilhada ---------- */
+
+function formatarQtd(valor, unidade) {
+  const casas = unidade === 'kg' ? 3 : 0;
+  const n = Number(valor || 0).toLocaleString('pt-BR', { maximumFractionDigits: casas });
+  return `${n} ${unidade}`;
+}
+
+const STATUS_ESTOQUE = {
+  ok: { icone: '✓', texto: 'OK' },
+  baixo: { icone: '⚠', texto: 'Abaixo do mínimo' },
+  zerado: { icone: '✕', texto: 'Sem estoque' },
+};

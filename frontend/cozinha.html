@@ -17,6 +17,7 @@
   <div class="header-actions">
     <nav class="header-nav">
       <a href="cozinha.html" class="active">Cozinha</a>
+      <a href="estoque.html">Estoque</a>
       <a href="gerencial.html" data-somente-admin hidden>Gerencial</a>
     </nav>
     <div class="usuario-box" data-usuario></div>
@@ -38,6 +39,8 @@
     </div>
   </div>
 
+  <div class="aviso-estoque" id="avisoEstoque" role="status" hidden></div>
+
   <div class="kanban" id="kanban"></div>
 
 </main>
@@ -54,15 +57,10 @@ const COLUNAS = [
 ];
 
 const MINUTOS_ATRASO = 40;          // pedido ativo há mais tempo que isso fica destacado
-const PING_MS = 25000;              // heartbeat do WebSocket
 const SOM_KEY = 'brasa_cozinha_som';
 
 const pedidos = new Map();          // id → pedido
 const novosIds = new Set();         // destacados até o próximo render
-let ws = null;
-let tentativasReconexao = 0;
-let timerPing = null;
-let timerReconexao = null;
 let somLigado = localStorage.getItem(SOM_KEY) !== '0';
 
 /* ---------- Ações disponíveis por status ---------- */
@@ -244,12 +242,6 @@ renderBotaoSom();
 
 /* ---------- Tempo real ---------- */
 
-function setConexao(estado, texto) {
-  const el = document.getElementById('conexao');
-  el.dataset.estado = estado;
-  document.getElementById('conexaoTexto').textContent = texto;
-}
-
 async function carregarFila() {
   const lista = await api('/cozinha/pedidos');
   pedidos.clear();
@@ -257,58 +249,53 @@ async function carregarFila() {
   render();
 }
 
-function conectarWebSocket() {
-  const sessao = getSessao();
-  if (!sessao) return;
-  clearTimeout(timerReconexao);
-  setConexao('conectando', 'Conectando…');
+function tratarMensagem(msg) {
+  if (msg.evento === 'estoque_atualizado') {
+    renderAlertasEstoque(msg.alertas || []);
+    return;
+  }
+  if (!msg.pedido) return;
 
-  const socket = new WebSocket(`${WS_URL}/ws/cozinha?token=${encodeURIComponent(sessao.token)}`);
-  ws = socket;
+  const jaExistia = pedidos.has(msg.pedido.id);
+  // o evento do WebSocket traz um resumo; mescla para não perder campos da listagem
+  pedidos.set(msg.pedido.id, { ...(pedidos.get(msg.pedido.id) || {}), ...msg.pedido });
 
-  socket.onopen = async () => {
-    if (socket !== ws) return;
-    tentativasReconexao = 0;
-    setConexao('online', 'Ao vivo');
-    clearInterval(timerPing);
-    timerPing = setInterval(() => socket.readyState === WebSocket.OPEN && socket.send('ping'), PING_MS);
-    // recarrega a fila: pega qualquer pedido que chegou enquanto estava desconectado
-    try { await carregarFila(); } catch (e) { /* o erro já aparece pela api() */ }
-  };
+  if (msg.evento === 'novo_pedido' && !jaExistia) {
+    novosIds.add(msg.pedido.id);
+    tocarAlerta();
+    showToast(`Novo pedido #${msg.pedido.id} — ${msg.pedido.cliente_nome || ''}`, 4000);
+  }
+  render();
+}
 
-  socket.onmessage = (event) => {
-    if (socket !== ws || event.data === 'pong') return;
-    let msg;
-    try { msg = JSON.parse(event.data); } catch (e) { return; }
-    if (!msg.pedido) return;
+const tempoReal = conectarTempoReal({
+  // recarrega a cada (re)conexão: pega o que chegou enquanto estava desconectado
+  onAbrir: async () => {
+    try {
+      await carregarFila();
+      renderAlertasEstoque(await api('/estoque/alertas'));
+    } catch (e) { /* o erro já aparece pela api() */ }
+  },
+  onMensagem: tratarMensagem,
+});
 
-    const jaExistia = pedidos.has(msg.pedido.id);
-    // o evento do WebSocket traz um resumo; mescla para não perder campos da listagem
-    pedidos.set(msg.pedido.id, { ...(pedidos.get(msg.pedido.id) || {}), ...msg.pedido });
+/* ---------- Aviso de estoque baixo ---------- */
 
-    if (msg.evento === 'novo_pedido' && !jaExistia) {
-      novosIds.add(msg.pedido.id);
-      tocarAlerta();
-      showToast(`Novo pedido #${msg.pedido.id} — ${msg.pedido.cliente_nome || ''}`, 4000);
-    }
-    render();
-  };
-
-  socket.onclose = (event) => {
-    if (socket !== ws) return; // conexão antiga, substituída após novo login
-    clearInterval(timerPing);
-    if (event.code === 4401) {
-      // token expirado ou inválido: não adianta reconectar, precisa logar de novo
-      limparSessao();
-      setConexao('offline', 'Sessão expirada');
-      abrirLogin('Sua sessão expirou. Entre novamente.');
-      return;
-    }
-    tentativasReconexao += 1;
-    const espera = Math.min(15000, 1000 * 2 ** (tentativasReconexao - 1));
-    setConexao('offline', `Reconectando em ${Math.round(espera / 1000)}s…`);
-    timerReconexao = setTimeout(conectarWebSocket, espera);
-  };
+function renderAlertasEstoque(alertas) {
+  const aviso = document.getElementById('avisoEstoque');
+  if (!alertas.length) {
+    aviso.hidden = true;
+    return;
+  }
+  const lista = alertas.slice(0, 4)
+    .map(a => `<strong>${escapeHTML(a.nome)}</strong> (${formatarQtd(a.quantidade, a.unidade)})`)
+    .join(', ');
+  const resto = alertas.length > 4 ? ` e mais ${alertas.length - 4}` : '';
+  aviso.innerHTML = `
+    <span class="aviso-icone" aria-hidden="true">⚠</span>
+    <span><b>Estoque:</b> ${alertas.length} ${alertas.length === 1 ? 'item abaixo' : 'itens abaixo'} do mínimo — ${lista}${resto}.</span>
+    <a href="estoque.html" class="btn btn-dark">Ver estoque</a>`;
+  aviso.hidden = false;
 }
 
 // Atualiza os "há X min" sem esperar eventos
@@ -317,11 +304,7 @@ setInterval(() => pedidos.size && render(), 30000);
 iniciarAreaEquipe({
   titulo: 'Login da cozinha',
   cargos: ['cozinha', 'admin'],
-  onEntrar: () => {
-    const antigo = ws;
-    conectarWebSocket();
-    if (antigo && antigo.readyState <= WebSocket.OPEN) antigo.close(1000);
-  },
+  onEntrar: () => tempoReal.iniciar(),
 });
 </script>
 

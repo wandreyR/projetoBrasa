@@ -1,0 +1,538 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Estoque — BRASA Pizzaria</title>
+<link rel="stylesheet" href="styles.css">
+<link rel="stylesheet" href="staff.css">
+</head>
+<body>
+
+<header class="brasa-header">
+  <div class="brasa-logo">
+    <span class="mark">BRA<em>SA</em></span>
+    <span class="tagline">área da equipe</span>
+  </div>
+  <div class="header-actions">
+    <nav class="header-nav">
+      <a href="cozinha.html">Cozinha</a>
+      <a href="estoque.html" class="active">Estoque</a>
+      <a href="gerencial.html" data-somente-admin hidden>Gerencial</a>
+    </nav>
+    <div class="usuario-box" data-usuario></div>
+  </div>
+</header>
+
+<main class="staff-page" id="conteudo" hidden>
+
+  <div class="staff-title">
+    <div>
+      <p class="eyebrow">O que tem na pizzaria</p>
+      <h1>Estoque</h1>
+    </div>
+    <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
+      <span class="conexao" id="conexao" data-estado="offline" role="status">
+        <span class="dot"></span><span id="conexaoTexto">Desconectado</span>
+      </span>
+      <button type="button" class="btn btn-primary" id="btnNovoItem">+ Cadastrar item</button>
+    </div>
+  </div>
+
+  <section class="resumo-estoque" aria-label="Resumo">
+    <button type="button" class="kpi" data-filtro-status="todos" aria-pressed="true">
+      <div class="rotulo">Itens cadastrados</div>
+      <div class="valor" id="totItens">–</div>
+    </button>
+    <button type="button" class="kpi" data-filtro-status="baixo" aria-pressed="false">
+      <div class="rotulo">⚠ Abaixo do mínimo</div>
+      <div class="valor" id="totBaixo">–</div>
+    </button>
+    <button type="button" class="kpi" data-filtro-status="zerado" aria-pressed="false">
+      <div class="rotulo">✕ Sem estoque</div>
+      <div class="valor" id="totZerado">–</div>
+    </button>
+  </section>
+
+  <div class="barra-ferramentas">
+    <input type="search" class="busca" id="busca" placeholder="Buscar item…" aria-label="Buscar item">
+    <div class="tabs" role="group" aria-label="Unidade">
+      <button type="button" class="tab active" data-filtro-unidade="todas">Todos</button>
+      <button type="button" class="tab" data-filtro-unidade="un">Unidades</button>
+      <button type="button" class="tab" data-filtro-unidade="kg">Kg</button>
+    </div>
+  </div>
+
+  <div class="estoque-grid" id="grade"></div>
+
+  <section class="painel">
+    <div class="painel-head">
+      <div>
+        <h2>Últimas movimentações</h2>
+        <p class="sub">Entradas, saídas, contagens e baixas automáticas dos pedidos</p>
+      </div>
+    </div>
+    <div class="tabela-wrap" id="historico"></div>
+  </section>
+
+  <details class="painel" id="painelReceita">
+    <summary>
+      <h2>Receita da pizza montada</h2>
+      <p class="sub">Quanto cada ingrediente escolhido pelo cliente em "Monte a sua" baixa do estoque (kg por pizza)</p>
+    </summary>
+    <div class="tabela-wrap" id="receita" style="margin-top:12px;"></div>
+  </details>
+
+</main>
+
+<!-- Entrada / saída / contagem -->
+<dialog class="dialogo" id="dlgMov">
+  <form method="dialog" id="formMov" novalidate>
+    <h2 id="movTitulo">Entrada</h2>
+    <p class="sub" id="movSub"></p>
+    <label class="field">
+      <span id="movRotulo">Quantidade</span>
+      <input type="number" name="quantidade" required min="0" inputmode="decimal">
+    </label>
+    <p class="dica" id="movDica"></p>
+    <label class="field">
+      <span>Observação <em>(opcional)</em></span>
+      <input type="text" name="observacao" maxlength="255" placeholder="Ex.: compra no fornecedor, massa do dia">
+    </label>
+    <div class="previa-saldo" id="movPrevia"></div>
+    <div class="botoes">
+      <button type="button" class="btn btn-ghost" data-fechar>Cancelar</button>
+      <button type="submit" class="btn btn-primary" id="movConfirmar">Confirmar</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- Cadastro / edição de item -->
+<dialog class="dialogo" id="dlgItem">
+  <form method="dialog" id="formItem" novalidate>
+    <h2 id="itemTitulo">Cadastrar item</h2>
+    <label class="field">
+      <span>Nome</span>
+      <input type="text" name="nome" required minlength="2" maxlength="120" placeholder="Ex.: Farinha de trigo">
+    </label>
+    <div class="linha">
+      <label class="field">
+        <span>Controlado em</span>
+        <select name="unidade" required>
+          <option value="un">Unidades (un)</option>
+          <option value="kg">Quilos (kg)</option>
+        </select>
+      </label>
+      <label class="field" id="campoQtdInicial">
+        <span>Quantidade atual</span>
+        <input type="number" name="quantidade" min="0" value="0" inputmode="decimal">
+      </label>
+    </div>
+    <label class="field">
+      <span>Avisar quando ficar abaixo de</span>
+      <input type="number" name="minimo" min="0" inputmode="decimal">
+    </label>
+    <p class="dica" id="dicaMinimo"></p>
+    <label class="field" id="campoBebida">
+      <span>Bebida do cardápio <em>(baixa automática)</em></span>
+      <select name="bebida_id"></select>
+    </label>
+    <p class="dica" id="dicaBebida">Cada unidade vendida dessa bebida sai do estoque automaticamente.</p>
+    <div class="botoes">
+      <button type="button" class="btn btn-ghost" data-fechar>Cancelar</button>
+      <button type="submit" class="btn btn-primary" id="itemSalvar">Salvar</button>
+    </div>
+  </form>
+</dialog>
+
+<script src="staff.js"></script>
+<script>
+const MINIMO_PADRAO = { un: 20, kg: 10 };
+const ORDEM_STATUS = { zerado: 0, baixo: 1, ok: 2 };
+const TIPO_MOV = {
+  entrada: 'Entrada', saida: 'Saída', ajuste: 'Contagem', pedido: 'Pedido', estorno: 'Estorno',
+};
+
+const estado = {
+  itens: [],
+  bebidas: [],
+  filtroStatus: 'todos',
+  filtroUnidade: 'todas',
+  busca: '',
+  sessao: null,
+  movItem: null,
+  movTipo: null,
+  editandoId: null,
+};
+
+/* ---------- Carregamento ---------- */
+
+async function carregarItens() {
+  estado.itens = await api('/estoque/itens');
+  renderResumo();
+  renderGrade();
+}
+
+async function carregarHistorico() {
+  renderHistorico(await api('/estoque/movimentacoes?limite=40'));
+}
+
+async function carregarTudo() {
+  try {
+    await Promise.all([carregarItens(), carregarHistorico()]);
+  } catch (e) {
+    if (!(e instanceof ErroSessao)) showToast(e.message, 5000);
+  }
+}
+
+/* ---------- Resumo e filtros ---------- */
+
+function renderResumo() {
+  document.getElementById('totItens').textContent = estado.itens.length;
+  document.getElementById('totBaixo').textContent = estado.itens.filter(i => i.status !== 'ok').length;
+  document.getElementById('totZerado').textContent = estado.itens.filter(i => i.status === 'zerado').length;
+}
+
+document.querySelectorAll('[data-filtro-status]').forEach(btn =>
+  btn.addEventListener('click', () => {
+    estado.filtroStatus = btn.dataset.filtroStatus;
+    document.querySelectorAll('[data-filtro-status]').forEach(b => b.setAttribute('aria-pressed', String(b === btn)));
+    renderGrade();
+  })
+);
+
+document.querySelectorAll('[data-filtro-unidade]').forEach(btn =>
+  btn.addEventListener('click', () => {
+    estado.filtroUnidade = btn.dataset.filtroUnidade;
+    document.querySelectorAll('[data-filtro-unidade]').forEach(b => b.classList.toggle('active', b === btn));
+    renderGrade();
+  })
+);
+
+document.getElementById('busca').addEventListener('input', (e) => {
+  estado.busca = e.target.value.trim().toLowerCase();
+  renderGrade();
+});
+
+function itensFiltrados() {
+  return estado.itens
+    .filter(i => estado.filtroStatus === 'todos'
+      || (estado.filtroStatus === 'baixo' ? i.status !== 'ok' : i.status === estado.filtroStatus))
+    .filter(i => estado.filtroUnidade === 'todas' || i.unidade === estado.filtroUnidade)
+    .filter(i => !estado.busca || i.nome.toLowerCase().includes(estado.busca))
+    // o que está acabando aparece primeiro
+    .sort((a, b) => ORDEM_STATUS[a.status] - ORDEM_STATUS[b.status] || a.nome.localeCompare(b.nome, 'pt-BR'));
+}
+
+/* ---------- Cards ---------- */
+
+function cardHTML(i) {
+  const st = STATUS_ESTOQUE[i.status];
+  // barra: 100% = o dobro do mínimo (bem abastecido)
+  const nivel = Math.max(0, Math.min(100, (i.quantidade / Math.max(i.minimo * 2, 0.001)) * 100));
+  const ehDono = estado.sessao && estado.sessao.cargo === 'admin';
+  return `
+    <article class="estoque-card" data-status="${i.status}">
+      <div class="topo">
+        <h3>${escapeHTML(i.nome)}${i.bebida_nome ? `<span class="vinculo">Baixa automática: ${escapeHTML(i.bebida_nome)}</span>` : ''}</h3>
+        <span class="selo" data-status="${i.status}"><span aria-hidden="true">${st.icone}</span>${st.texto}</span>
+      </div>
+      <div class="qtd">${formatarQtd(i.quantidade, i.unidade)}<small>mín. ${formatarQtd(i.minimo, i.unidade)}</small></div>
+      <div class="nivel" aria-hidden="true"><i style="width:${nivel}%"></i></div>
+      <div class="acoes">
+        <button type="button" class="btn-mini entrada" data-mov="entrada" data-id="${i.id}">+ Entrada</button>
+        <button type="button" class="btn-mini saida" data-mov="saida" data-id="${i.id}">− Saída</button>
+        <button type="button" class="btn-mini" data-mov="ajuste" data-id="${i.id}">Contagem</button>
+        <button type="button" class="link-acao" data-editar="${i.id}">Editar</button>
+        ${ehDono ? `<button type="button" class="link-acao perigo" data-excluir="${i.id}">Excluir</button>` : ''}
+      </div>
+    </article>`;
+}
+
+function renderGrade() {
+  const lista = itensFiltrados();
+  document.getElementById('grade').innerHTML = lista.length
+    ? lista.map(cardHTML).join('')
+    : `<p class="tabela-vazia" style="grid-column:1/-1">Nenhum item encontrado.</p>`;
+}
+
+document.getElementById('grade').addEventListener('click', async (event) => {
+  const mov = event.target.closest('[data-mov]');
+  const editar = event.target.closest('[data-editar]');
+  const excluir = event.target.closest('[data-excluir]');
+  if (mov) abrirMovimentacao(Number(mov.dataset.id), mov.dataset.mov);
+  if (editar) abrirItem(Number(editar.dataset.editar));
+  if (excluir) {
+    const item = estado.itens.find(i => i.id === Number(excluir.dataset.excluir));
+    if (!item || !confirm(`Excluir "${item.nome}" do estoque? O histórico é mantido.`)) return;
+    try {
+      await api(`/estoque/itens/${item.id}`, { method: 'DELETE' });
+      showToast('Item excluído');
+      await carregarTudo();
+    } catch (e) {
+      if (!(e instanceof ErroSessao)) showToast(e.message, 5000);
+    }
+  }
+});
+
+/* ---------- Diálogo: entrada / saída / contagem ---------- */
+
+const dlgMov = document.getElementById('dlgMov');
+const formMov = document.getElementById('formMov');
+
+function abrirMovimentacao(id, tipo) {
+  const item = estado.itens.find(i => i.id === id);
+  if (!item) return;
+  estado.movItem = item;
+  estado.movTipo = tipo;
+  const textos = {
+    entrada: ['Entrada', 'Quanto chegou?', 'Compra ou reposição.'],
+    saida: ['Saída', 'Quanto foi usado ou perdido?', 'Uso na cozinha, perda ou vencimento.'],
+    ajuste: ['Contagem', 'Quanto tem agora?', 'Informe o total contado — o sistema corrige a diferença.'],
+  }[tipo];
+  document.getElementById('movTitulo').textContent = `${textos[0]} — ${item.nome}`;
+  document.getElementById('movSub').textContent = `Saldo atual: ${formatarQtd(item.quantidade, item.unidade)}`;
+  document.getElementById('movRotulo').textContent = `${textos[1]} (${item.unidade})`;
+  document.getElementById('movDica').textContent = textos[2];
+  formMov.reset();
+  const campo = formMov.elements.quantidade;
+  campo.step = item.unidade === 'kg' ? '0.001' : '1';
+  campo.min = tipo === 'ajuste' ? '0' : (item.unidade === 'kg' ? '0.001' : '1');
+  if (tipo === 'ajuste') campo.value = item.quantidade;
+  atualizarPrevia();
+  dlgMov.showModal();
+  campo.select();
+}
+
+function atualizarPrevia() {
+  const item = estado.movItem;
+  const v = Number(formMov.elements.quantidade.value);
+  const previa = document.getElementById('movPrevia');
+  if (!item || formMov.elements.quantidade.value === '' || Number.isNaN(v)) {
+    previa.textContent = `${formatarQtd(item ? item.quantidade : 0, item ? item.unidade : 'un')} → ?`;
+    return;
+  }
+  const novo = estado.movTipo === 'entrada' ? item.quantidade + v
+    : estado.movTipo === 'saida' ? item.quantidade - v : v;
+  const alerta = novo < item.minimo ? '  ⚠ abaixo do mínimo' : '';
+  previa.textContent = `${formatarQtd(item.quantidade, item.unidade)} → ${formatarQtd(novo, item.unidade)}${alerta}`;
+}
+
+formMov.elements.quantidade.addEventListener('input', atualizarPrevia);
+
+formMov.addEventListener('submit', async (event) => {
+  event.preventDefault();
+  if (!formMov.reportValidity()) return;
+  const botao = document.getElementById('movConfirmar');
+  botao.disabled = true;
+  try {
+    await api(`/estoque/itens/${estado.movItem.id}/movimentar`, {
+      method: 'POST',
+      body: {
+        tipo: estado.movTipo,
+        quantidade: Number(formMov.elements.quantidade.value),
+        observacao: formMov.elements.observacao.value.trim() || null,
+      },
+    });
+    dlgMov.close();
+    showToast(`${TIPO_MOV[estado.movTipo]} registrada`);
+    await carregarTudo();
+  } catch (e) {
+    if (!(e instanceof ErroSessao)) showToast(e.message, 5000);
+  } finally {
+    botao.disabled = false;
+  }
+});
+
+/* ---------- Diálogo: cadastro / edição ---------- */
+
+const dlgItem = document.getElementById('dlgItem');
+const formItem = document.getElementById('formItem');
+
+function atualizarCamposUnidade() {
+  const unidade = formItem.elements.unidade.value;
+  document.getElementById('dicaMinimo').textContent =
+    `Deixe vazio para usar o padrão: ${MINIMO_PADRAO[unidade]} ${unidade}.`;
+  formItem.elements.minimo.placeholder = `${MINIMO_PADRAO[unidade]}`;
+  formItem.elements.minimo.step = unidade === 'kg' ? '0.001' : '1';
+  formItem.elements.quantidade.step = unidade === 'kg' ? '0.001' : '1';
+  // só itens em unidades podem ser ligados a uma bebida
+  document.getElementById('campoBebida').hidden = unidade !== 'un';
+  document.getElementById('dicaBebida').hidden = unidade !== 'un';
+  if (unidade !== 'un') formItem.elements.bebida_id.value = '';
+}
+formItem.elements.unidade.addEventListener('change', atualizarCamposUnidade);
+
+function opcoesBebidas(itemId) {
+  const ocupadas = new Map(estado.itens.filter(i => i.bebida_id && i.id !== itemId).map(i => [i.bebida_id, i.nome]));
+  return `<option value="">Nenhuma</option>` + estado.bebidas.map(b =>
+    `<option value="${b.id}" ${ocupadas.has(b.id) ? 'disabled' : ''}>${escapeHTML(b.nome)}${ocupadas.has(b.id) ? ` (já em "${escapeHTML(ocupadas.get(b.id))}")` : ''}</option>`
+  ).join('');
+}
+
+function abrirItem(id = null) {
+  const item = id ? estado.itens.find(i => i.id === id) : null;
+  estado.editandoId = item ? item.id : null;
+  formItem.reset();
+  formItem.elements.bebida_id.innerHTML = opcoesBebidas(estado.editandoId);
+  document.getElementById('itemTitulo').textContent = item ? `Editar — ${item.nome}` : 'Cadastrar item';
+  // a quantidade de um item existente muda só por entrada/saída/contagem (fica no histórico)
+  document.getElementById('campoQtdInicial').hidden = !!item;
+  if (item) {
+    formItem.elements.nome.value = item.nome;
+    formItem.elements.unidade.value = item.unidade;
+    formItem.elements.minimo.value = item.minimo;
+    formItem.elements.bebida_id.value = item.bebida_id || '';
+  }
+  atualizarCamposUnidade();
+  dlgItem.showModal();
+  formItem.elements.nome.focus();
+}
+
+document.getElementById('btnNovoItem').addEventListener('click', () => abrirItem());
+
+formItem.addEventListener('submit', async (event) => {
+  event.preventDefault();
+  if (!formItem.reportValidity()) return;
+  const f = formItem.elements;
+  const corpo = {
+    nome: f.nome.value.trim(),
+    unidade: f.unidade.value,
+    minimo: f.minimo.value === '' ? null : Number(f.minimo.value),
+    bebida_id: f.bebida_id.value ? Number(f.bebida_id.value) : null,
+  };
+  const botao = document.getElementById('itemSalvar');
+  botao.disabled = true;
+  try {
+    if (estado.editandoId) {
+      await api(`/estoque/itens/${estado.editandoId}`, { method: 'PUT', body: corpo });
+      showToast('Item atualizado');
+    } else {
+      await api('/estoque/itens', { method: 'POST', body: { ...corpo, quantidade: Number(f.quantidade.value || 0) } });
+      showToast('Item cadastrado');
+    }
+    dlgItem.close();
+    await carregarTudo();
+    carregarReceita();
+  } catch (e) {
+    if (!(e instanceof ErroSessao)) showToast(e.message, 5000);
+  } finally {
+    botao.disabled = false;
+  }
+});
+
+document.querySelectorAll('[data-fechar]').forEach(btn =>
+  btn.addEventListener('click', () => btn.closest('dialog').close())
+);
+
+/* ---------- Histórico ---------- */
+
+function renderHistorico(movs) {
+  document.getElementById('historico').innerHTML = movs.length ? `
+    <table class="tabela">
+      <thead><tr><th>Quando</th><th>Item</th><th>Tipo</th><th class="num">Qtd.</th><th class="num">Saldo</th><th>Por</th><th>Obs.</th></tr></thead>
+      <tbody>${movs.map(m => {
+        const quando = parseDataApi(m.criado_em);
+        const sinal = m.quantidade > 0 ? '+' : '';
+        return `
+        <tr>
+          <td style="white-space:nowrap">${quando.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })} ${quando.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</td>
+          <td>${escapeHTML(m.item_nome)}</td>
+          <td>${TIPO_MOV[m.tipo] || m.tipo}</td>
+          <td class="num qtd-mov ${m.quantidade >= 0 ? 'pos' : 'neg'}">${sinal}${formatarQtd(m.quantidade, m.unidade)}</td>
+          <td class="num">${formatarQtd(m.saldo, m.unidade)}</td>
+          <td>${m.pedido_id ? `Pedido #${m.pedido_id}` : escapeHTML(m.usuario_nome || '—')}</td>
+          <td>${escapeHTML(m.observacao || '')}</td>
+        </tr>`;
+      }).join('')}</tbody>
+    </table>` : `<p class="tabela-vazia">Nenhuma movimentação ainda.</p>`;
+}
+
+/* ---------- Receita da pizza montada ---------- */
+
+const TIPO_ING = { massa: 'Massa', molho: 'Molho', topping: 'Cobertura' };
+
+async function carregarReceita() {
+  try {
+    const receita = await api('/estoque/consumo');
+    const itensKg = estado.itens.filter(i => i.unidade === 'kg');
+    document.getElementById('receita').innerHTML = `
+      <table class="tabela">
+        <thead><tr><th>Ingrediente</th><th>Tipo</th><th>Baixa do item</th><th class="num">P (kg)</th><th class="num">M (kg)</th><th class="num">G (kg)</th><th></th></tr></thead>
+        <tbody>${receita.map(r => `
+          <tr data-ing="${r.ingrediente_id}">
+            <td>${escapeHTML(r.ingrediente_nome)}</td>
+            <td>${TIPO_ING[r.ingrediente_tipo] || r.ingrediente_tipo}</td>
+            <td><select name="item" aria-label="Item de estoque de ${escapeHTML(r.ingrediente_nome)}">
+              <option value="">— não baixa —</option>
+              ${itensKg.map(i => `<option value="${i.id}" ${i.id === r.estoque_item_id ? 'selected' : ''}>${escapeHTML(i.nome)}</option>`).join('')}
+            </select></td>
+            ${['qtd_p', 'qtd_m', 'qtd_g'].map(k => `<td><input type="number" name="${k}" min="0" max="10" step="0.005" value="${r[k]}" aria-label="${k.slice(-1).toUpperCase()}"></td>`).join('')}
+            <td><button type="button" class="btn-mini" data-salvar-receita>Salvar</button></td>
+          </tr>`).join('')}</tbody>
+      </table>`;
+  } catch (e) {
+    if (!(e instanceof ErroSessao)) showToast(e.message, 5000);
+  }
+}
+
+document.getElementById('receita').addEventListener('click', async (event) => {
+  const botao = event.target.closest('[data-salvar-receita]');
+  if (!botao) return;
+  const linha = botao.closest('tr');
+  const campo = (n) => linha.querySelector(`[name="${n}"]`);
+  botao.disabled = true;
+  try {
+    await api(`/estoque/consumo/${linha.dataset.ing}`, {
+      method: 'PUT',
+      body: {
+        estoque_item_id: campo('item').value ? Number(campo('item').value) : null,
+        qtd_p: Number(campo('qtd_p').value || 0),
+        qtd_m: Number(campo('qtd_m').value || 0),
+        qtd_g: Number(campo('qtd_g').value || 0),
+      },
+    });
+    showToast('Receita salva');
+  } catch (e) {
+    if (!(e instanceof ErroSessao)) showToast(e.message, 5000);
+  } finally {
+    botao.disabled = false;
+  }
+});
+
+let receitaCarregada = false;
+document.getElementById('painelReceita').addEventListener('toggle', (e) => {
+  if (e.target.open && !receitaCarregada) {
+    receitaCarregada = true;
+    carregarReceita();
+  }
+});
+
+/* ---------- Tempo real: outro funcionário ou um pedido mexeu no estoque ---------- */
+
+let timerRecarga = null;
+const tempoReal = conectarTempoReal({
+  onAbrir: carregarTudo,
+  onMensagem: (msg) => {
+    if (msg.evento !== 'estoque_atualizado') return;
+    clearTimeout(timerRecarga);
+    timerRecarga = setTimeout(carregarTudo, 300); // agrupa vários eventos seguidos
+  },
+});
+
+/* ---------- Início ---------- */
+
+iniciarAreaEquipe({
+  titulo: 'Login do estoque',
+  cargos: ['cozinha', 'admin'],
+  onEntrar: async (sessao) => {
+    estado.sessao = sessao;
+    document.getElementById('conteudo').hidden = false;
+    try { estado.bebidas = await api('/cardapio/bebidas'); } catch (e) { /* lista de bebidas é opcional */ }
+    tempoReal.iniciar();
+  },
+});
+</script>
+
+</body>
+</html>

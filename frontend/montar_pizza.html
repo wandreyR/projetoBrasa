@@ -270,6 +270,7 @@ document.getElementById('addCustomBtn').addEventListener('click', () => {
     precoUnit,
     qtd: state.qtd,
     detalhes: `${massaNome} · ${molhoNome} · ${ingNomes.join(', ') || 'sem ingredientes extras'}`,
+    ingredientes: [massaNome, molhoNome, ...ingNomes], // usado pela API para baixar o estoque (kg)
     customId: `custom-${Date.now()}`,
   });
 

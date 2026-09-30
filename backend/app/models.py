@@ -179,3 +179,73 @@ class Despesa(Base):
     data = Column(Date, nullable=False, index=True)  # data da despesa no horário local
     criado_por_id = Column(Integer, ForeignKey("usuarios.id"), nullable=True)
     criado_em = Column(DateTime, default=datetime.utcnow)
+
+
+# ---------------------------------------------------------------------
+# Estoque
+# ---------------------------------------------------------------------
+
+class UnidadeEstoque(str, enum.Enum):
+    un = "un"   # contado em unidades (bebidas, embalagens)
+    kg = "kg"   # pesado (farinha, queijos, molhos)
+
+
+# Limite padrão de alerta quando o item é cadastrado sem um mínimo próprio
+MINIMO_PADRAO = {UnidadeEstoque.un: 20.0, UnidadeEstoque.kg: 10.0}
+
+
+class TipoMovimentacao(str, enum.Enum):
+    entrada = "entrada"      # compra / reposição (manual)
+    saida = "saida"          # uso na cozinha, perda (manual)
+    ajuste = "ajuste"        # correção após contagem (manual)
+    pedido = "pedido"        # baixa automática por pedido
+    estorno = "estorno"      # devolução automática por pedido cancelado
+
+
+class EstoqueItem(Base):
+    __tablename__ = "estoque_itens"
+
+    id = Column(Integer, primary_key=True, index=True)
+    nome = Column(String(120), unique=True, nullable=False)
+    unidade = Column(Enum(UnidadeEstoque), nullable=False)
+    quantidade = Column(Float, nullable=False, default=0)
+    minimo = Column(Float, nullable=False)  # alerta quando quantidade < minimo
+    # Bebida vendida no cardápio: cada unidade pedida baixa 1 deste item
+    bebida_id = Column(Integer, ForeignKey("bebidas.id"), unique=True, nullable=True)
+    ativo = Column(Integer, default=1)
+    atualizado_em = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    bebida = relationship("Bebida")
+
+
+class ConsumoIngrediente(Base):
+    """Receita da pizza montada: quanto (em kg) cada ingrediente escolhido pelo
+    cliente consome do estoque, por tamanho. Vários ingredientes podem apontar
+    para o mesmo item (ex.: massas Tradicional e Fina → Farinha de trigo)."""
+    __tablename__ = "consumo_ingredientes"
+
+    ingrediente_id = Column(Integer, ForeignKey("ingredientes.id"), primary_key=True)
+    estoque_item_id = Column(Integer, ForeignKey("estoque_itens.id"), nullable=False)
+    qtd_p = Column(Float, nullable=False, default=0)
+    qtd_m = Column(Float, nullable=False, default=0)
+    qtd_g = Column(Float, nullable=False, default=0)
+
+    ingrediente = relationship("Ingrediente")
+    estoque_item = relationship("EstoqueItem")
+
+
+class MovimentacaoEstoque(Base):
+    __tablename__ = "estoque_movimentacoes"
+
+    id = Column(Integer, primary_key=True, index=True)
+    estoque_item_id = Column(Integer, ForeignKey("estoque_itens.id"), nullable=False, index=True)
+    tipo = Column(Enum(TipoMovimentacao), nullable=False)
+    quantidade = Column(Float, nullable=False)  # positivo = entrou, negativo = saiu
+    saldo = Column(Float, nullable=False)       # quantidade do item logo após a movimentação
+    pedido_id = Column(Integer, ForeignKey("pedidos.id"), nullable=True, index=True)
+    usuario_id = Column(Integer, ForeignKey("usuarios.id"), nullable=True)
+    observacao = Column(String(255), nullable=True)
+    criado_em = Column(DateTime, default=datetime.utcnow, index=True)
+
+    estoque_item = relationship("EstoqueItem")
+    usuario = relationship("Usuario")

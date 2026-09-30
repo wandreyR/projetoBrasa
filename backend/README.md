@@ -63,6 +63,14 @@ Com o servidor rodando, acesse:
 | GET    | `/cozinha/pedidos`                    | sim          | Lista a fila de pedidos                      |
 | PATCH  | `/cozinha/pedidos/{id}/status`        | sim          | Atualiza status (pendente → em_preparo → …)  |
 | WS     | `/ws/cozinha?token=<jwt>`             | sim          | Eventos em tempo real da cozinha             |
+| GET    | `/estoque/itens`                      | sim          | Itens com saldo e status (ok/baixo/zerado)   |
+| GET    | `/estoque/alertas`                    | sim          | Itens abaixo do mínimo                       |
+| POST   | `/estoque/itens`                      | sim          | Cadastra item (mínimo padrão 20 un / 10 kg)  |
+| PUT    | `/estoque/itens/{id}`                 | sim          | Edita nome, unidade, mínimo, bebida ligada   |
+| DELETE | `/estoque/itens/{id}`                 | dono         | Exclui item (mantém histórico)               |
+| POST   | `/estoque/itens/{id}/movimentar`      | sim          | Entrada, saída ou contagem                   |
+| GET    | `/estoque/movimentacoes`              | sim          | Histórico de movimentações                   |
+| GET/PUT| `/estoque/consumo[/{ingrediente_id}]` | sim          | Receita da pizza montada (kg por tamanho)    |
 | GET    | `/gerencial/resumo?inicio=&fim=`      | dono         | Faturamento, despesas, lucro, top itens      |
 | GET    | `/gerencial/despesas`                 | dono         | Lista despesas do período                    |
 | POST   | `/gerencial/despesas`                 | dono         | Lança uma despesa                            |

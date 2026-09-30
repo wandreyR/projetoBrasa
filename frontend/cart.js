@@ -105,6 +105,16 @@ function tipoItemApi(item) {
   return item.tamanho ? 'cardapio' : 'bebida';
 }
 
+// Pizza montada: massa, molho e coberturas escolhidos. Itens adicionados antes desta
+// versão só têm o texto "Massa · Molho · a, b" em detalhes — nesse caso, extrai de lá.
+function ingredientesDaPizza(item) {
+  if (Array.isArray(item.ingredientes)) return item.ingredientes;
+  const partes = String(item.detalhes || '').split(' · ');
+  if (partes.length < 3) return null;
+  const coberturas = partes.slice(2).join(' · ');
+  return [partes[0], partes[1], ...(coberturas === 'sem ingredientes extras' ? [] : coberturas.split(', '))];
+}
+
 function montarPayloadPedido(cliente) {
   return {
     cliente_nome: cliente.nome,
@@ -123,6 +133,7 @@ function montarPayloadPedido(cliente) {
         preco_unitario: item.precoUnit,
         quantidade: item.qtd,
         detalhes: item.detalhes || null,
+        ingredientes: tipo === 'custom' ? ingredientesDaPizza(item) : null,
       };
     }),
   };
