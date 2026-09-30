@@ -804,3 +804,41 @@ img, svg { display: block; max-width: 100%; }
 .checkout-actions .btn-primary:disabled { opacity: 0.6; cursor: wait; }
 
 .order-confirmed .pizza-thumb { opacity: 1; }
+
+.cart-link.active { border-color: var(--gold); }
+
+/* ---------- Rodapé: acesso da equipe ---------- */
+
+.site-footer {
+  background: var(--crust-dark);
+  color: var(--text-light);
+  border-top: 1px solid var(--line);
+}
+
+.site-footer-inner {
+  max-width: 1080px;
+  margin: 0 auto;
+  padding: 28px 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+
+@media (min-width: 720px) { .site-footer-inner { padding: 32px 28px; } }
+
+.site-footer .eyebrow { color: var(--gold); margin-bottom: 4px; }
+.footer-texto { margin: 0; font-size: 14px; color: var(--text-muted); }
+
+.footer-acoes { display: flex; gap: 10px; flex-wrap: wrap; }
+
+.btn-ghost-light {
+  background: transparent;
+  color: var(--text-light);
+  border: 1px solid var(--line);
+}
+.btn-ghost-light:hover { border-color: var(--gold); }
+
+.btn-gold { background: var(--gold); color: var(--crust-deep); }
+.btn-gold:hover { background: #E3B32C; }

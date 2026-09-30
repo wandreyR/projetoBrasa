@@ -17,9 +17,8 @@
     <nav class="header-nav">
       <a href="cardapio.html">Cardápio</a>
       <a href="montar_pizza.html">Monte a sua</a>
-      <a href="carrinho.html" class="active">Carrinho</a>
     </nav>
-    <a href="carrinho.html" class="cart-link">
+    <a href="carrinho.html" class="cart-link active" aria-current="page">
       Carrinho
       <span class="cart-badge" data-cart-badge>0</span>
     </a>
@@ -72,6 +71,19 @@
   </form>
 
 </main>
+
+<footer class="site-footer" id="equipe">
+  <div class="site-footer-inner">
+    <div>
+      <p class="eyebrow">Área da equipe</p>
+      <p class="footer-texto">Acesso restrito aos funcionários da BRASA.</p>
+    </div>
+    <div class="footer-acoes">
+      <a href="cozinha.html" class="btn btn-ghost-light">Login da cozinha</a>
+      <a href="gerencial.html" class="btn btn-gold">Login do gerente</a>
+    </div>
+  </div>
+</footer>
 
 <script src="cart.js"></script>
 <script>

@@ -315,6 +315,7 @@ function conectarWebSocket() {
 setInterval(() => pedidos.size && render(), 30000);
 
 iniciarAreaEquipe({
+  titulo: 'Login da cozinha',
   cargos: ['cozinha', 'admin'],
   onEntrar: () => {
     const antigo = ws;

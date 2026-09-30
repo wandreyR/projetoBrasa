@@ -113,7 +113,7 @@ async function api(caminho, { method = 'GET', body } = {}) {
 
 /* ---------- Login ---------- */
 
-let _configLogin = { cargos: ['admin', 'cozinha'], onEntrar: () => {} };
+let _configLogin = { cargos: ['admin', 'cozinha'], titulo: 'Entrar', onEntrar: () => {} };
 
 function modalLoginHTML() {
   return `
@@ -121,7 +121,7 @@ function modalLoginHTML() {
       <form class="login-card" id="loginForm" novalidate>
         <div class="brasa-logo"><span class="mark">BRA<em>SA</em></span></div>
         <p class="eyebrow">Área da equipe</p>
-        <h2 id="loginTitulo">Entrar</h2>
+        <h2 id="loginTitulo">${escapeHTML(_configLogin.titulo)}</h2>
         <p class="login-msg" id="loginMsg" role="alert"></p>
         <label class="field">
           <span>E-mail</span>
@@ -132,6 +132,7 @@ function modalLoginHTML() {
           <input type="password" name="senha" autocomplete="current-password" required>
         </label>
         <button type="submit" class="btn btn-primary btn-block">Entrar</button>
+        <a href="cardapio.html" class="login-voltar">← Voltar ao site</a>
       </form>
     </div>`;
 }
@@ -179,8 +180,8 @@ function renderUsuarioHeader(sessao) {
  * Garante que há um usuário logado com cargo permitido antes de iniciar a página.
  * cargos: lista de cargos aceitos; onEntrar(sessao): inicia a página.
  */
-async function iniciarAreaEquipe({ cargos, onEntrar }) {
-  _configLogin = { cargos, onEntrar };
+async function iniciarAreaEquipe({ cargos, titulo = 'Entrar', onEntrar }) {
+  _configLogin = { cargos, titulo, onEntrar };
   document.body.insertAdjacentHTML('beforeend', modalLoginHTML());
 
   const form = document.getElementById('loginForm');
@@ -228,8 +229,8 @@ async function iniciarAreaEquipe({ cargos, onEntrar }) {
   try {
     const usuario = await api('/auth/me');
     if (!cargoPermitido(usuario.cargo)) {
-      limparSessao();
-      abrirLogin('Seu usuário não tem acesso a esta área.');
+      // Não apaga a sessão: outra aba (ex.: a cozinha) pode estar usando esse login.
+      abrirLogin(`Você está logado como ${usuario.nome}. Entre com um usuário que tenha acesso a esta área.`);
       return;
     }
     const atualizada = { ...sessao, nome: usuario.nome, cargo: usuario.cargo };
