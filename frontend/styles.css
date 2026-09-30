@@ -807,38 +807,30 @@ img, svg { display: block; max-width: 100%; }
 
 .cart-link.active { border-color: var(--gold); }
 
-/* ---------- Rodapé: acesso da equipe ---------- */
+/* ---------- Topo: acesso da equipe (cozinha / gerente) ---------- */
 
-.site-footer {
-  background: var(--crust-dark);
-  color: var(--text-light);
-  border-top: 1px solid var(--line);
-}
+.equipe-links { display: flex; gap: 8px; }
 
-.site-footer-inner {
-  max-width: 1080px;
-  margin: 0 auto;
-  padding: 28px 16px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  flex-wrap: wrap;
-  gap: 16px;
-}
-
-@media (min-width: 720px) { .site-footer-inner { padding: 32px 28px; } }
-
-.site-footer .eyebrow { color: var(--gold); margin-bottom: 4px; }
-.footer-texto { margin: 0; font-size: 14px; color: var(--text-muted); }
-
-.footer-acoes { display: flex; gap: 10px; flex-wrap: wrap; }
-
-.btn-ghost-light {
-  background: transparent;
-  color: var(--text-light);
+.equipe-link {
+  font-size: 13px;
+  font-weight: 600;
+  padding: 9px 14px;
+  border-radius: 999px;
   border: 1px solid var(--line);
+  color: var(--text-muted);
+  white-space: nowrap;
+  transition: border-color 0.15s ease, color 0.15s ease;
 }
-.btn-ghost-light:hover { border-color: var(--gold); }
+.equipe-link:hover { border-color: var(--gold); color: var(--text-light); }
 
-.btn-gold { background: var(--gold); color: var(--crust-deep); }
-.btn-gold:hover { background: #E3B32C; }
+.equipe-link-gerente { background: var(--gold); border-color: var(--gold); color: var(--crust-deep); }
+.equipe-link-gerente:hover { background: #E3B32C; color: var(--crust-deep); }
+
+/* Celular: o cabeçalho quebra em duas linhas — logo + carrinho em cima, equipe embaixo */
+@media (max-width: 559px) {
+  .brasa-header { flex-wrap: wrap; row-gap: 10px; padding: 14px 16px; }
+  /* os itens de .header-actions passam a ser filhos diretos do cabeçalho */
+  .header-actions:has(.equipe-links) { display: contents; }
+  .equipe-links { width: 100%; justify-content: flex-end; }
+  .equipe-link { padding: 7px 12px; font-size: 12.5px; }
+}
