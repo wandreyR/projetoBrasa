@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Cardápio — BRASA Pizzaria</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<header class="brasa-header">
+  <div class="brasa-logo">
+    <span class="mark">BRA<em>SA</em></span>
+    <span class="tagline">forno a lenha desde sempre</span>
+  </div>
+  <div class="header-actions">
+    <nav class="header-nav">
+      <a href="cardapio.html" class="active">Cardápio</a>
+      <a href="montar_pizza.html">Monte a sua</a>
+      <a href="carrinho.html">Carrinho</a>
+    </nav>
+    <a href="carrinho.html" class="cart-link">
+      Carrinho
+      <span class="cart-badge" data-cart-badge>0</span>
+    </a>
+  </div>
+</header>
+
+<main class="page">
+
+  <section class="hero">
+    <p class="eyebrow">Cardápio · Goiânia</p>
+    <h1>Pizza de <em>verdade</em>, do forno pra sua mesa.</h1>
+    <p>Escolha uma das nossas favoritas ou monte a sua do zero, com o molho, a massa e os ingredientes que você quiser.</p>
+  </section>
+
+  <div class="build-banner">
+    <div class="copy">
+      <p class="eyebrow">Sem sabor pronto que te agrade?</p>
+      <h2>Monte a sua pizza do jeito que quiser</h2>
+      <p>Escolha tamanho, massa, molho e cada ingrediente — a pré-visualização mostra sua pizza sendo montada em tempo real.</p>
+      <a href="montar_pizza.html" class="btn btn-primary">Montar minha pizza</a>
+    </div>
+  </div>
+
+  <div class="tabs" role="tablist" aria-label="Categorias do cardápio">
+    <button class="tab active" data-cat="todas">Todas</button>
+    <button class="tab" data-cat="tradicionais">Tradicionais</button>
+    <button class="tab" data-cat="especiais">Especiais</button>
+    <button class="tab" data-cat="doces">Doces</button>
+    <button class="tab" data-cat="bebidas">Bebidas</button>
+  </div>
+
+  <div class="menu-grid" id="menuGrid"></div>
+
+</main>
+
+<script src="cart.js"></script>
+<script>
+const PIZZAS = [
+  { id: 'margherita', nome: 'Margherita', cat: 'tradicionais', desc: 'Molho de tomate, mussarela e manjericão fresco', cor: '#C1391F', toppings: ['#4C6444','#FFFBF3','#4C6444'], precos: { P: 32, M: 42, G: 52 } },
+  { id: 'calabresa', nome: 'Calabresa', cat: 'tradicionais', desc: 'Molho de tomate, mussarela, calabresa e cebola', cor: '#9A2C17', toppings: ['#5A2E1F','#F4E9D8','#5A2E1F'], precos: { P: 34, M: 44, G: 54 } },
+  { id: 'portuguesa', nome: 'Portuguesa', cat: 'tradicionais', desc: 'Presunto, ovos, cebola, azeitona e mussarela', cor: '#C1391F', toppings: ['#F4E9D8','#2B1810','#D4A017'], precos: { P: 36, M: 47, G: 58 } },
+  { id: 'frango-catupiry', nome: 'Frango com Catupiry', cat: 'especiais', desc: 'Frango desfiado, catupiry cremoso e milho', cor: '#D4A017', toppings: ['#FFFBF3','#F4E9D8','#D4A017'], precos: { P: 36, M: 47, G: 58 } },
+  { id: 'quatro-queijos', nome: 'Quatro Queijos', cat: 'especiais', desc: 'Mussarela, provolone, parmesão e gorgonzola', cor: '#D4A017', toppings: ['#FFFBF3','#F4E9D8','#E9C989'], precos: { P: 38, M: 49, G: 60 } },
+  { id: 'pepperoni', nome: 'Pepperoni', cat: 'tradicionais', desc: 'Molho de tomate, mussarela e pepperoni picante', cor: '#C1391F', toppings: ['#9A2C17','#9A2C17','#9A2C17'], precos: { P: 37, M: 48, G: 59 } },
+  { id: 'toscana', nome: 'Toscana', cat: 'especiais', desc: 'Linguiça toscana, pimentão e cebola roxa', cor: '#9A2C17', toppings: ['#5A2E1F','#4C6444','#6B3A5C'], precos: { P: 38, M: 49, G: 60 } },
+  { id: 'vegetariana', nome: 'Vegetariana', cat: 'especiais', desc: 'Abobrinha, berinjela, tomate seco e rúcula', cor: '#4C6444', toppings: ['#8CA05C','#5C3A5C','#7A3B2E'], precos: { P: 36, M: 47, G: 58 } },
+  { id: 'choco-morango', nome: 'Chocolate com Morango', cat: 'doces', desc: 'Chocolate ao leite derretido e morango fatiado', cor: '#5A3220', toppings: ['#C1391F','#C1391F','#F4E9D8'], precos: { P: 34, M: 44, G: 54 } },
+  { id: 'banana-canela', nome: 'Banana com Canela', cat: 'doces', desc: 'Banana, canela e leite condensado', cor: '#D4A017', toppings: ['#E9C989','#8B5A2B','#FFFBF3'], precos: { P: 32, M: 42, G: 52 } },
+  { id: 'coca-cola', nome: 'Coca-Cola 350ml', cat: 'bebidas', desc: 'Lata gelada', cor: '#7A1E12', toppings: [], precos: { Único: 6 } },
+  { id: 'guarana', nome: 'Guaraná 350ml', cat: 'bebidas', desc: 'Lata gelada', cor: '#8B7A1E', toppings: [], precos: { Único: 6 } },
+  { id: 'suco-natural', nome: 'Suco Natural', cat: 'bebidas', desc: 'Feito na hora — pergunte o sabor do dia', cor: '#D4A017', toppings: [], precos: { Único: 8 } },
+  { id: 'agua', nome: 'Água Mineral', cat: 'bebidas', desc: 'Com ou sem gás', cor: '#4C7A8B', toppings: [], precos: { Único: 4 } },
+];
+
+// Posições fixas para os "toppings" ilustrativos nos círculos das pizzas
+const DOT_POS = [
+  { top: '32%', left: '38%' }, { top: '55%', left: '65%' }, { top: '68%', left: '35%' }
+];
+
+function pizzaThumbHTML(pizza) {
+  if (pizza.cat === 'bebidas') {
+    return `<div class="pizza-thumb" style="background:${pizza.cor}"></div>`;
+  }
+  const dots = pizza.toppings.map((c, i) =>
+    `<span class="dot" style="background:${c}; top:${DOT_POS[i].top}; left:${DOT_POS[i].left}"></span>`
+  ).join('');
+  return `<div class="pizza-thumb" style="background:${pizza.cor}">${dots}</div>`;
+}
+
+function sizeOptionsHTML(precos) {
+  return Object.keys(precos).map(sz => `<option value="${sz}">${sz} — ${formatPrice(precos[sz])}</option>`).join('');
+}
+
+function renderMenu(filter) {
+  const grid = document.getElementById('menuGrid');
+  const items = PIZZAS.filter(p => filter === 'todas' || p.cat === filter);
+  grid.innerHTML = items.map(p => `
+    <article class="pizza-card">
+      <div class="thumb-wrap">${pizzaThumbHTML(p)}</div>
+      <h3>${p.nome}</h3>
+      <p class="desc">${p.desc}</p>
+      <div class="card-controls">
+        <select class="size-select" data-id="${p.id}">
+          ${sizeOptionsHTML(p.precos)}
+        </select>
+        <button class="btn-add-icon" data-add="${p.id}" aria-label="Adicionar ${p.nome} ao carrinho">+</button>
+      </div>
+    </article>
+  `).join('');
+
+  grid.querySelectorAll('[data-add]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const id = btn.dataset.add;
+      const pizza = PIZZAS.find(p => p.id === id);
+      const select = grid.querySelector(`.size-select[data-id="${id}"]`);
+      const tamanho = select.value;
+      addToCart({
+        id: pizza.id,
+        tipo: 'cardapio',
+        nome: pizza.nome,
+        tamanho: tamanho === 'Único' ? '' : tamanho,
+        precoUnit: pizza.precos[tamanho],
+        qtd: 1,
+        detalhes: pizza.cat === 'bebidas' ? 'Bebida' : `Tamanho ${tamanho}`,
+      });
+      showToast(`${pizza.nome} adicionada ao carrinho`);
+    });
+  });
+}
+
+document.querySelectorAll('.tab').forEach(tab => {
+  tab.addEventListener('click', () => {
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    tab.classList.add('active');
+    renderMenu(tab.dataset.cat);
+  });
+});
+
+renderMenu('todas');
+</script>
+
+</body>
+</html>

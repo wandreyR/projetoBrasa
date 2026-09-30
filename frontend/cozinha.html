@@ -1,0 +1,328 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Cozinha — BRASA Pizzaria</title>
+<link rel="stylesheet" href="styles.css">
+<link rel="stylesheet" href="staff.css">
+</head>
+<body>
+
+<header class="brasa-header">
+  <div class="brasa-logo">
+    <span class="mark">BRA<em>SA</em></span>
+    <span class="tagline">área da equipe</span>
+  </div>
+  <div class="header-actions">
+    <nav class="header-nav">
+      <a href="cozinha.html" class="active">Cozinha</a>
+      <a href="gerencial.html" data-somente-admin hidden>Gerencial</a>
+    </nav>
+    <div class="usuario-box" data-usuario></div>
+  </div>
+</header>
+
+<main class="staff-page">
+
+  <div class="staff-title">
+    <div>
+      <p class="eyebrow">Fila de pedidos</p>
+      <h1>Cozinha</h1>
+    </div>
+    <div style="display:flex; gap:8px; flex-wrap:wrap;">
+      <button type="button" class="btn-som" id="btnSom" aria-pressed="true">Som de novo pedido</button>
+      <span class="conexao" id="conexao" data-estado="offline" role="status">
+        <span class="dot"></span><span id="conexaoTexto">Desconectado</span>
+      </span>
+    </div>
+  </div>
+
+  <div class="kanban" id="kanban"></div>
+
+</main>
+
+<script src="staff.js"></script>
+<script>
+/* ---------- Configuração do quadro ---------- */
+
+const COLUNAS = [
+  { status: 'pendente',   titulo: 'Novos',       dica: 'Aguardando início' },
+  { status: 'em_preparo', titulo: 'Em preparo',  dica: 'No forno' },
+  { status: 'pronto',     titulo: 'Prontos',     dica: 'Aguardando entregador ou cliente' },
+  { status: 'entregue',   titulo: 'Entregues',   dica: 'Finalizados hoje' },
+];
+
+const MINUTOS_ATRASO = 40;          // pedido ativo há mais tempo que isso fica destacado
+const PING_MS = 25000;              // heartbeat do WebSocket
+const SOM_KEY = 'brasa_cozinha_som';
+
+const pedidos = new Map();          // id → pedido
+const novosIds = new Set();         // destacados até o próximo render
+let ws = null;
+let tentativasReconexao = 0;
+let timerPing = null;
+let timerReconexao = null;
+let somLigado = localStorage.getItem(SOM_KEY) !== '0';
+
+/* ---------- Ações disponíveis por status ---------- */
+
+function acoesDoPedido(p) {
+  const acoes = { principal: null, voltar: null, cancelar: false };
+  if (p.status === 'pendente') {
+    acoes.principal = { label: 'Iniciar preparo', para: 'em_preparo', classe: 'btn-primary' };
+    acoes.cancelar = true;
+  } else if (p.status === 'em_preparo') {
+    acoes.principal = { label: 'Marcar como pronto', para: 'pronto', classe: 'btn-primary' };
+    acoes.voltar = 'pendente';
+    acoes.cancelar = true;
+  } else if (p.status === 'pronto') {
+    acoes.principal = p.tipo_entrega === 'delivery'
+      ? { label: 'Entregue ao entregador', para: 'entregue', classe: 'btn-dark' }
+      : { label: 'Retirado pelo cliente', para: 'entregue', classe: 'btn-dark' };
+    acoes.voltar = 'em_preparo';
+    acoes.cancelar = true;
+  } else if (p.status === 'entregue') {
+    acoes.voltar = 'pronto';
+  }
+  return acoes;
+}
+
+/* ---------- Render ---------- */
+
+function minutosDesde(data) {
+  return Math.max(0, Math.floor((Date.now() - data.getTime()) / 60000));
+}
+
+function textoTempo(p) {
+  const criado = parseDataApi(p.criado_em);
+  if (p.status === 'entregue' || p.status === 'cancelado') {
+    const fim = parseDataApi(p.atualizado_em) || criado;
+    return { texto: fim.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }), atrasado: false };
+  }
+  const min = minutosDesde(criado);
+  const texto = min < 60 ? `há ${min} min` : `há ${Math.floor(min / 60)}h${String(min % 60).padStart(2, '0')}`;
+  return { texto, atrasado: min >= MINUTOS_ATRASO };
+}
+
+function cardHTML(p) {
+  const tempo = textoTempo(p);
+  const acoes = acoesDoPedido(p);
+  const tipo = p.tipo_entrega === 'delivery'
+    ? `<span class="tag delivery">Entrega</span>`
+    : `<span class="tag">Retirada</span>`;
+  const statusTag = p.status === 'cancelado' ? `<span class="tag cancelado">Cancelado</span>` : '';
+
+  const itens = p.itens.map(i => `
+    <li>
+      <span class="qtd">${i.quantidade}×</span>${escapeHTML(i.nome)}${i.tamanho ? ` <strong>${escapeHTML(i.tamanho)}</strong>` : ''}
+      ${i.detalhes && i.tipo === 'custom' ? `<span class="det">${escapeHTML(i.detalhes)}</span>` : ''}
+    </li>`).join('');
+
+  const endereco = p.tipo_entrega === 'delivery' && p.endereco_entrega
+    ? `<span class="sub">${escapeHTML(p.endereco_entrega)}</span>` : '';
+
+  return `
+    <article class="pedido-card ${novosIds.has(p.id) ? 'novo' : ''}" data-status="${p.status}" data-id="${p.id}">
+      <div class="pedido-topo">
+        <span class="pedido-num">#${p.id}</span>
+        ${tipo}${statusTag}
+        <span class="pedido-tempo ${tempo.atrasado ? 'atrasado' : ''}" title="${tempo.atrasado ? 'Pedido atrasado' : ''}">${tempo.atrasado ? '⚠ ' : ''}${tempo.texto}</span>
+      </div>
+      <div class="pedido-cliente">
+        <strong>${escapeHTML(p.cliente_nome || 'Cliente')}</strong>
+        <span class="sub">${escapeHTML(formatarTelefone(p.cliente_telefone))}</span>
+        ${endereco}
+      </div>
+      <ul class="pedido-itens">${itens}</ul>
+      ${p.observacoes ? `<div class="pedido-obs"><strong>Obs.:</strong> ${escapeHTML(p.observacoes)}</div>` : ''}
+      <div class="pedido-acoes">
+        ${acoes.principal ? `<button type="button" class="btn ${acoes.principal.classe}" data-acao="${acoes.principal.para}">${acoes.principal.label}</button>` : `<span class="pedido-total">${formatPrice(p.total)}</span>`}
+        ${acoes.voltar ? `<button type="button" class="link-acao" data-acao="${acoes.voltar}" title="Voltar para a etapa anterior">↩ Voltar</button>` : ''}
+        ${acoes.cancelar ? `<button type="button" class="link-acao perigo" data-acao="cancelado">Cancelar</button>` : ''}
+      </div>
+    </article>`;
+}
+
+function formatarTelefone(tel) {
+  let d = String(tel || '').replace(/\D/g, '');
+  if ((d.length === 12 || d.length === 13) && d.startsWith('55')) d = d.slice(2); // remove o código do país
+  if (d.length === 11) return `(${d.slice(0, 2)}) ${d.slice(2, 7)}-${d.slice(7)}`;
+  if (d.length === 10) return `(${d.slice(0, 2)}) ${d.slice(2, 6)}-${d.slice(6)}`;
+  return tel || '';
+}
+
+function pedidosDaColuna(status) {
+  const lista = [...pedidos.values()].filter(p =>
+    status === 'entregue' ? (p.status === 'entregue' || p.status === 'cancelado') : p.status === status
+  );
+  if (status === 'entregue') {
+    // mais recentes primeiro
+    return lista.sort((a, b) => parseDataApi(b.atualizado_em || b.criado_em) - parseDataApi(a.atualizado_em || a.criado_em));
+  }
+  // mais antigos primeiro: quem chegou antes sai antes
+  return lista.sort((a, b) => parseDataApi(a.criado_em) - parseDataApi(b.criado_em));
+}
+
+function render() {
+  const kanban = document.getElementById('kanban');
+  kanban.innerHTML = COLUNAS.map(col => {
+    const lista = pedidosDaColuna(col.status);
+    return `
+      <section class="coluna" data-status="${col.status}" aria-label="${col.titulo}">
+        <div class="coluna-head">
+          <span class="marca"></span>
+          <div>${col.titulo}<small>${col.dica}</small></div>
+          <span class="qtd">${lista.length}</span>
+        </div>
+        <div class="coluna-lista">
+          ${lista.length ? lista.map(cardHTML).join('') : `<div class="coluna-vazia">Nenhum pedido</div>`}
+        </div>
+      </section>`;
+  }).join('');
+  novosIds.clear();
+
+  const novos = pedidosDaColuna('pendente').length;
+  document.title = `${novos ? `(${novos}) ` : ''}Cozinha — BRASA Pizzaria`;
+}
+
+/* ---------- Ações ---------- */
+
+document.getElementById('kanban').addEventListener('click', async (event) => {
+  const botao = event.target.closest('[data-acao]');
+  if (!botao) return;
+  const card = botao.closest('.pedido-card');
+  const id = Number(card.dataset.id);
+  const novoStatus = botao.dataset.acao;
+
+  if (novoStatus === 'cancelado' && !confirm(`Cancelar o pedido #${id}? Ele deixa de contar no faturamento.`)) return;
+
+  card.querySelectorAll('button').forEach(b => (b.disabled = true));
+  try {
+    const atualizado = await api(`/cozinha/pedidos/${id}/status`, { method: 'PATCH', body: { status: novoStatus } });
+    pedidos.set(atualizado.id, atualizado);
+    render();
+  } catch (e) {
+    if (!(e instanceof ErroSessao)) showToast(e.message, 5000);
+    card.querySelectorAll('button').forEach(b => (b.disabled = false));
+  }
+});
+
+/* ---------- Som de novo pedido (Web Audio, sem arquivo externo) ---------- */
+
+let audioCtx = null;
+function tocarAlerta() {
+  if (!somLigado) return;
+  try {
+    audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+    [0, 0.18].forEach((atraso, i) => {
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.frequency.value = i === 0 ? 880 : 1175;
+      gain.gain.setValueAtTime(0.0001, audioCtx.currentTime + atraso);
+      gain.gain.exponentialRampToValueAtTime(0.25, audioCtx.currentTime + atraso + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + atraso + 0.16);
+      osc.connect(gain).connect(audioCtx.destination);
+      osc.start(audioCtx.currentTime + atraso);
+      osc.stop(audioCtx.currentTime + atraso + 0.18);
+    });
+  } catch (e) { /* navegador sem Web Audio: segue sem som */ }
+}
+
+const btnSom = document.getElementById('btnSom');
+function renderBotaoSom() {
+  btnSom.setAttribute('aria-pressed', String(somLigado));
+  btnSom.textContent = somLigado ? '🔔 Som ligado' : '🔕 Som desligado';
+}
+btnSom.addEventListener('click', () => {
+  somLigado = !somLigado;
+  localStorage.setItem(SOM_KEY, somLigado ? '1' : '0');
+  renderBotaoSom();
+  if (somLigado) tocarAlerta(); // teste + libera o áudio no navegador
+});
+renderBotaoSom();
+
+/* ---------- Tempo real ---------- */
+
+function setConexao(estado, texto) {
+  const el = document.getElementById('conexao');
+  el.dataset.estado = estado;
+  document.getElementById('conexaoTexto').textContent = texto;
+}
+
+async function carregarFila() {
+  const lista = await api('/cozinha/pedidos');
+  pedidos.clear();
+  lista.forEach(p => pedidos.set(p.id, p));
+  render();
+}
+
+function conectarWebSocket() {
+  const sessao = getSessao();
+  if (!sessao) return;
+  clearTimeout(timerReconexao);
+  setConexao('conectando', 'Conectando…');
+
+  const socket = new WebSocket(`${WS_URL}/ws/cozinha?token=${encodeURIComponent(sessao.token)}`);
+  ws = socket;
+
+  socket.onopen = async () => {
+    if (socket !== ws) return;
+    tentativasReconexao = 0;
+    setConexao('online', 'Ao vivo');
+    clearInterval(timerPing);
+    timerPing = setInterval(() => socket.readyState === WebSocket.OPEN && socket.send('ping'), PING_MS);
+    // recarrega a fila: pega qualquer pedido que chegou enquanto estava desconectado
+    try { await carregarFila(); } catch (e) { /* o erro já aparece pela api() */ }
+  };
+
+  socket.onmessage = (event) => {
+    if (socket !== ws || event.data === 'pong') return;
+    let msg;
+    try { msg = JSON.parse(event.data); } catch (e) { return; }
+    if (!msg.pedido) return;
+
+    const jaExistia = pedidos.has(msg.pedido.id);
+    // o evento do WebSocket traz um resumo; mescla para não perder campos da listagem
+    pedidos.set(msg.pedido.id, { ...(pedidos.get(msg.pedido.id) || {}), ...msg.pedido });
+
+    if (msg.evento === 'novo_pedido' && !jaExistia) {
+      novosIds.add(msg.pedido.id);
+      tocarAlerta();
+      showToast(`Novo pedido #${msg.pedido.id} — ${msg.pedido.cliente_nome || ''}`, 4000);
+    }
+    render();
+  };
+
+  socket.onclose = (event) => {
+    if (socket !== ws) return; // conexão antiga, substituída após novo login
+    clearInterval(timerPing);
+    if (event.code === 4401) {
+      // token expirado ou inválido: não adianta reconectar, precisa logar de novo
+      limparSessao();
+      setConexao('offline', 'Sessão expirada');
+      abrirLogin('Sua sessão expirou. Entre novamente.');
+      return;
+    }
+    tentativasReconexao += 1;
+    const espera = Math.min(15000, 1000 * 2 ** (tentativasReconexao - 1));
+    setConexao('offline', `Reconectando em ${Math.round(espera / 1000)}s…`);
+    timerReconexao = setTimeout(conectarWebSocket, espera);
+  };
+}
+
+// Atualiza os "há X min" sem esperar eventos
+setInterval(() => pedidos.size && render(), 30000);
+
+iniciarAreaEquipe({
+  cargos: ['cozinha', 'admin'],
+  onEntrar: () => {
+    const antigo = ws;
+    conectarWebSocket();
+    if (antigo && antigo.readyState <= WebSocket.OPEN) antigo.close(1000);
+  },
+});
+</script>
+
+</body>
+</html>

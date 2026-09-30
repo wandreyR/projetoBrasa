@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Monte sua pizza — BRASA Pizzaria</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<header class="brasa-header">
+  <div class="brasa-logo">
+    <span class="mark">BRA<em>SA</em></span>
+    <span class="tagline">forno a lenha desde sempre</span>
+  </div>
+  <div class="header-actions">
+    <nav class="header-nav">
+      <a href="cardapio.html">Cardápio</a>
+      <a href="montar_pizza.html" class="active">Monte a sua</a>
+      <a href="carrinho.html">Carrinho</a>
+    </nav>
+    <a href="carrinho.html" class="cart-link">
+      Carrinho
+      <span class="cart-badge" data-cart-badge>0</span>
+    </a>
+  </div>
+</header>
+
+<main class="page">
+
+  <section class="hero">
+    <p class="eyebrow">Monte a sua</p>
+    <h1>Sua pizza, <em>sua regra.</em></h1>
+    <p>Escolha cada etapa e acompanhe sua pizza sendo montada ao vivo. Nada de sabor pronto — aqui é 100% do seu jeito.</p>
+  </section>
+
+  <div class="builder-grid">
+
+    <div class="preview-col">
+      <div class="pizza-preview-wrap">
+        <div class="pizza-preview" id="pizzaPreview">
+          <div class="sauce" id="pizzaSauce"></div>
+          <!-- toppings injetados via JS -->
+        </div>
+      </div>
+      <div class="preview-price">
+        <p class="label">Total da pizza</p>
+        <p class="value" id="previewPrice">R$ 28,00</p>
+      </div>
+    </div>
+
+    <div class="builder-steps">
+
+      <div class="step">
+        <p class="step-label">Passo 1</p>
+        <h3>Escolha o tamanho</h3>
+        <div class="size-dial" id="sizeDial">
+          <button class="size-option" data-size="P">
+            <span class="ring"></span>
+            <span class="name">P</span>
+            <span class="meta">4 fatias · R$ 28</span>
+          </button>
+          <button class="size-option selected" data-size="M">
+            <span class="ring"></span>
+            <span class="name">M</span>
+            <span class="meta">6 fatias · R$ 38</span>
+          </button>
+          <button class="size-option" data-size="G">
+            <span class="ring"></span>
+            <span class="name">G</span>
+            <span class="meta">8 fatias · R$ 48</span>
+          </button>
+        </div>
+      </div>
+
+      <div class="step">
+        <p class="step-label">Passo 2</p>
+        <h3>Escolha a massa</h3>
+        <div class="chip-row" id="massaRow"></div>
+      </div>
+
+      <div class="step">
+        <p class="step-label">Passo 3</p>
+        <h3>Escolha o molho base</h3>
+        <div class="chip-row" id="molhoRow"></div>
+      </div>
+
+      <div class="step">
+        <p class="step-label">Passo 4</p>
+        <h3>Escolha os ingredientes</h3>
+        <div class="chip-row" id="ingredientesRow"></div>
+      </div>
+
+      <div class="step">
+        <div class="builder-cta">
+          <div class="qty-control">
+            <button type="button" id="qtyMinus" aria-label="Diminuir quantidade">−</button>
+            <span class="qty-val" id="qtyVal">1</span>
+            <button type="button" id="qtyPlus" aria-label="Aumentar quantidade">+</button>
+          </div>
+          <button class="btn btn-primary" id="addCustomBtn">Adicionar ao carrinho</button>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+</main>
+
+<script src="cart.js"></script>
+<script>
+const SIZES = {
+  P: { preco: 28, fatias: 4 },
+  M: { preco: 38, fatias: 6 },
+  G: { preco: 48, fatias: 8 },
+};
+
+const MASSAS = [
+  { id: 'tradicional', nome: 'Tradicional', add: 0 },
+  { id: 'fina', nome: 'Fina', add: 0 },
+  { id: 'integral', nome: 'Integral', add: 2 },
+];
+
+const MOLHOS = [
+  { id: 'tomate', nome: 'Molho de tomate', add: 0, corSauce: '#B7371F', corBase: '#E9C989' },
+  { id: 'branco', nome: 'Branco (alho e azeite)', add: 0, corSauce: '#EFE3C6', corBase: '#E9C989' },
+  { id: 'barbecue', nome: 'Barbecue', add: 2, corSauce: '#5A2E14', corBase: '#E9C989' },
+];
+
+const INGREDIENTES = [
+  { id: 'mussarela', nome: 'Mussarela', add: 3, cor: '#FFFBF3' },
+  { id: 'calabresa', nome: 'Calabresa', add: 3, cor: '#8B3A2B' },
+  { id: 'frango', nome: 'Frango', add: 3, cor: '#E8D9B5' },
+  { id: 'presunto', nome: 'Presunto', add: 3, cor: '#E8A6A0' },
+  { id: 'bacon', nome: 'Bacon', add: 4, cor: '#A85C3F' },
+  { id: 'champignon', nome: 'Champignon', add: 3, cor: '#D9C9A8' },
+  { id: 'cebola', nome: 'Cebola roxa', add: 2, cor: '#7A4B6B' },
+  { id: 'pimentao', nome: 'Pimentão', add: 2, cor: '#4C6444' },
+  { id: 'azeitona', nome: 'Azeitona', add: 2, cor: '#2B2B1E' },
+  { id: 'milho', nome: 'Milho', add: 2, cor: '#E8B923' },
+  { id: 'catupiry', nome: 'Catupiry', add: 4, cor: '#FFF6DC' },
+  { id: 'gorgonzola', nome: 'Gorgonzola', add: 4, cor: '#E9E2C9' },
+  { id: 'rucula', nome: 'Rúcula', add: 3, cor: '#4C6444' },
+  { id: 'tomate-seco', nome: 'Tomate seco', add: 3, cor: '#7A2E1E' },
+  { id: 'palmito', nome: 'Palmito', add: 3, cor: '#EDE4C8' },
+];
+
+// Posições em círculo para até 15 toppings (geradas em anel)
+function generateRingPositions(n, radiusPct) {
+  const positions = [];
+  for (let i = 0; i < n; i++) {
+    const angle = (i / n) * 2 * Math.PI - Math.PI / 2;
+    const top = 50 + radiusPct * Math.sin(angle);
+    const left = 50 + radiusPct * Math.cos(angle);
+    positions.push({ top: `${top}%`, left: `${left}%` });
+  }
+  return positions;
+}
+
+const state = {
+  size: 'M',
+  massa: 'tradicional',
+  molho: 'tomate',
+  ingredientes: new Set(['mussarela']),
+  qtd: 1,
+};
+
+function renderChips(containerId, options, selectedId, onSelect, multi) {
+  const el = document.getElementById(containerId);
+  el.innerHTML = options.map(opt => {
+    const isSelected = multi ? state.ingredientes.has(opt.id) : selectedId === opt.id;
+    return `
+      <button type="button" class="chip ${isSelected ? 'selected' : ''}" data-id="${opt.id}">
+        ${opt.nome}
+        ${opt.add > 0 ? `<span class="add-price">+${formatPrice(opt.add)}</span>` : ''}
+      </button>
+    `;
+  }).join('');
+  el.querySelectorAll('.chip').forEach(chip => {
+    chip.addEventListener('click', () => {
+      onSelect(chip.dataset.id);
+      renderAll();
+    });
+  });
+}
+
+function renderSizeDial() {
+  document.querySelectorAll('.size-option').forEach(btn => {
+    btn.classList.toggle('selected', btn.dataset.size === state.size);
+  });
+}
+
+function calcPrice() {
+  const base = SIZES[state.size].preco;
+  const massaAdd = MASSAS.find(m => m.id === state.massa).add;
+  const molhoAdd = MOLHOS.find(m => m.id === state.molho).add;
+  let ingAdd = 0;
+  state.ingredientes.forEach(id => {
+    const ing = INGREDIENTES.find(i => i.id === id);
+    if (ing) ingAdd += ing.add;
+  });
+  return base + massaAdd + molhoAdd + ingAdd;
+}
+
+function renderPreview() {
+  const molho = MOLHOS.find(m => m.id === state.molho);
+  document.getElementById('pizzaSauce').style.background = molho.corSauce;
+
+  const preview = document.getElementById('pizzaPreview');
+  preview.querySelectorAll('.topping').forEach(t => t.remove());
+
+  const selected = INGREDIENTES.filter(i => state.ingredientes.has(i.id));
+  const positions = generateRingPositions(Math.max(selected.length, 1), 28);
+  selected.forEach((ing, i) => {
+    const jitterR = 22 + (i % 3) * 6; // pequenas camadas de raio para não empilhar tudo igual
+    const angle = (i / selected.length) * 2 * Math.PI - Math.PI / 2 + (i * 0.35);
+    const top = 50 + jitterR * Math.sin(angle);
+    const left = 50 + jitterR * Math.cos(angle);
+    const dot = document.createElement('span');
+    dot.className = 'topping';
+    dot.style.background = ing.cor;
+    dot.style.top = `${top}%`;
+    dot.style.left = `${left}%`;
+    preview.appendChild(dot);
+    requestAnimationFrame(() => dot.classList.add('on'));
+  });
+
+  document.getElementById('previewPrice').textContent = formatPrice(calcPrice() * state.qtd);
+}
+
+function renderAll() {
+  renderSizeDial();
+  renderChips('massaRow', MASSAS, state.massa, id => (state.massa = id));
+  renderChips('molhoRow', MOLHOS, state.molho, id => (state.molho = id));
+  renderChips('ingredientesRow', INGREDIENTES, null, id => {
+    if (state.ingredientes.has(id)) state.ingredientes.delete(id);
+    else state.ingredientes.add(id);
+  }, true);
+  renderPreview();
+  document.getElementById('qtyVal').textContent = state.qtd;
+}
+
+document.querySelectorAll('.size-option').forEach(btn => {
+  btn.addEventListener('click', () => {
+    state.size = btn.dataset.size;
+    renderAll();
+  });
+});
+
+document.getElementById('qtyMinus').addEventListener('click', () => {
+  state.qtd = Math.max(1, state.qtd - 1);
+  renderAll();
+});
+document.getElementById('qtyPlus').addEventListener('click', () => {
+  state.qtd += 1;
+  renderAll();
+});
+
+document.getElementById('addCustomBtn').addEventListener('click', () => {
+  const massaNome = MASSAS.find(m => m.id === state.massa).nome;
+  const molhoNome = MOLHOS.find(m => m.id === state.molho).nome;
+  const ingNomes = INGREDIENTES.filter(i => state.ingredientes.has(i.id)).map(i => i.nome);
+  const precoUnit = calcPrice();
+
+  addToCart({
+    id: 'custom',
+    tipo: 'custom',
+    nome: 'Pizza montada',
+    tamanho: state.size,
+    precoUnit,
+    qtd: state.qtd,
+    detalhes: `${massaNome} · ${molhoNome} · ${ingNomes.join(', ') || 'sem ingredientes extras'}`,
+    customId: `custom-${Date.now()}`,
+  });
+
+  showToast('Sua pizza foi adicionada ao carrinho');
+  state.qtd = 1;
+  renderAll();
+});
+
+renderAll();
+</script>
+
+</body>
+</html>

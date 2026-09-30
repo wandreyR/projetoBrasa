@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Carrinho — BRASA Pizzaria</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<header class="brasa-header">
+  <div class="brasa-logo">
+    <span class="mark">BRA<em>SA</em></span>
+    <span class="tagline">forno a lenha desde sempre</span>
+  </div>
+  <div class="header-actions">
+    <nav class="header-nav">
+      <a href="cardapio.html">Cardápio</a>
+      <a href="montar_pizza.html">Monte a sua</a>
+      <a href="carrinho.html" class="active">Carrinho</a>
+    </nav>
+    <a href="carrinho.html" class="cart-link">
+      Carrinho
+      <span class="cart-badge" data-cart-badge>0</span>
+    </a>
+  </div>
+</header>
+
+<main class="page">
+
+  <section class="hero" style="margin-bottom: 32px; padding-bottom: 28px;">
+    <p class="eyebrow">Seu pedido</p>
+    <h1>Carrinho</h1>
+  </section>
+
+  <div id="cartContent"></div>
+
+  <form id="checkoutForm" class="checkout-card" hidden novalidate>
+    <p class="eyebrow">Finalizar</p>
+    <h2>Seus dados</h2>
+
+    <div class="segmented" role="radiogroup" aria-label="Entrega ou retirada">
+      <label><input type="radio" name="tipo_entrega" value="delivery" checked><span>Entrega</span></label>
+      <label><input type="radio" name="tipo_entrega" value="retirada"><span>Retirar no balcão</span></label>
+    </div>
+
+    <div class="field-grid">
+      <label class="field">
+        <span>Nome</span>
+        <input type="text" name="nome" autocomplete="name" required minlength="2" maxlength="120">
+      </label>
+      <label class="field">
+        <span>Telefone (WhatsApp)</span>
+        <input type="tel" name="telefone" autocomplete="tel" required placeholder="(11) 98765-4321"
+               minlength="10" maxlength="20" title="Informe DDD + número">
+      </label>
+      <label class="field field-full" id="enderecoField">
+        <span>Endereço de entrega</span>
+        <input type="text" name="endereco" autocomplete="street-address" required maxlength="255"
+               placeholder="Rua, número, complemento, bairro">
+      </label>
+      <label class="field field-full">
+        <span>Observações <em>(opcional)</em></span>
+        <textarea name="observacoes" rows="2" maxlength="500" placeholder="Ex.: sem cebola, troco para R$ 100"></textarea>
+      </label>
+    </div>
+
+    <div class="checkout-actions">
+      <a href="cardapio.html" class="btn btn-ghost">Continuar comprando</a>
+      <button type="submit" class="btn btn-primary" id="checkoutBtn">Confirmar pedido</button>
+    </div>
+  </form>
+
+</main>
+
+<script src="cart.js"></script>
+<script>
+const checkoutForm = document.getElementById('checkoutForm');
+const enderecoField = document.getElementById('enderecoField');
+
+function escapeHTML(texto) {
+  const div = document.createElement('div');
+  div.textContent = texto == null ? '' : String(texto);
+  return div.innerHTML;
+}
+
+function tipoEntregaSelecionado() {
+  return checkoutForm.querySelector('input[name="tipo_entrega"]:checked').value;
+}
+
+function pizzaThumbSmallHTML(item) {
+  return `<div class="pizza-thumb thumb" style="background:#C1391F"></div>`;
+}
+
+function renderCart() {
+  const container = document.getElementById('cartContent');
+  const cart = getCart();
+
+  if (cart.length === 0) {
+    checkoutForm.hidden = true;
+    container.innerHTML = `
+      <div class="empty-state">
+        <div class="pizza-thumb"></div>
+        <h3>Seu carrinho está vazio</h3>
+        <p>Que tal escolher uma pizza do cardápio ou montar a sua?</p>
+        <a href="cardapio.html" class="btn btn-dark">Ver cardápio</a>
+      </div>
+    `;
+    return;
+  }
+
+  const itemsHTML = cart.map(item => `
+    <div class="cart-item">
+      <div class="thumb">${pizzaThumbSmallHTML(item)}</div>
+      <div class="info">
+        <h4>${escapeHTML(item.nome)}${item.tamanho ? ` — ${escapeHTML(item.tamanho)}` : ''}</h4>
+        <p class="meta">${escapeHTML(item.detalhes)}</p>
+      </div>
+      <div class="price-col">
+        <span class="price">${formatPrice(item.precoUnit * item.qtd)}</span>
+        <div class="qty-control">
+          <button type="button" data-minus="${item.customId}" aria-label="Diminuir quantidade">−</button>
+          <span class="qty-val">${item.qtd}</span>
+          <button type="button" data-plus="${item.customId}" aria-label="Aumentar quantidade">+</button>
+        </div>
+        <button type="button" class="remove-link" data-remove="${item.customId}">Remover</button>
+      </div>
+    </div>
+  `).join('');
+
+  const subtotal = getCartTotal();
+  const taxaEntrega = tipoEntregaSelecionado() === 'delivery' ? TAXA_ENTREGA : 0;
+
+  container.innerHTML = `
+    <div class="cart-list">${itemsHTML}</div>
+    <div class="summary-card">
+      <div class="summary-row">
+        <span>Subtotal</span>
+        <span>${formatPrice(subtotal)}</span>
+      </div>
+      <div class="summary-row">
+        <span>Taxa de entrega</span>
+        <span>${taxaEntrega ? formatPrice(taxaEntrega) : 'Grátis (retirada)'}</span>
+      </div>
+      <div class="summary-row total">
+        <span>Total</span>
+        <span class="val">${formatPrice(subtotal + taxaEntrega)}</span>
+      </div>
+    </div>
+  `;
+  checkoutForm.hidden = false;
+
+  container.querySelectorAll('[data-plus]').forEach(btn =>
+    btn.addEventListener('click', () => { updateQty(btn.dataset.plus, 1); renderCart(); })
+  );
+  container.querySelectorAll('[data-minus]').forEach(btn =>
+    btn.addEventListener('click', () => { updateQty(btn.dataset.minus, -1); renderCart(); })
+  );
+  container.querySelectorAll('[data-remove]').forEach(btn =>
+    btn.addEventListener('click', () => { removeFromCart(btn.dataset.remove); renderCart(); showToast('Item removido'); })
+  );
+}
+
+function renderConfirmacao(pedido) {
+  checkoutForm.hidden = true;
+  checkoutForm.reset();
+  const entrega = pedido.tipo_entrega === 'delivery'
+    ? `Vamos entregar em <strong>${escapeHTML(pedido.endereco_entrega)}</strong>.`
+    : 'Avisaremos pelo telefone quando estiver pronto para retirada.';
+  document.getElementById('cartContent').innerHTML = `
+    <div class="empty-state order-confirmed">
+      <div class="pizza-thumb"></div>
+      <p class="eyebrow">Pedido nº ${pedido.id}</p>
+      <h3>Pedido enviado para o forno!</h3>
+      <p>${entrega} Total: <strong>${formatPrice(pedido.total)}</strong>.</p>
+      <a href="cardapio.html" class="btn btn-dark">Voltar ao cardápio</a>
+    </div>
+  `;
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+// Entrega x retirada: mostra/esconde endereço e recalcula a taxa no resumo
+checkoutForm.querySelectorAll('input[name="tipo_entrega"]').forEach(radio =>
+  radio.addEventListener('change', () => {
+    const delivery = tipoEntregaSelecionado() === 'delivery';
+    enderecoField.hidden = !delivery;
+    enderecoField.querySelector('input').required = delivery;
+    renderCart();
+  })
+);
+
+initCheckout(checkoutForm, { onSuccess: renderConfirmacao });
+renderCart();
+</script>
+
+</body>
+</html>

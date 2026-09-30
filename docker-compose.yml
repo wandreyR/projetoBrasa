@@ -1,0 +1,64 @@
+services:
+
+  db:
+    image: mysql:8.4
+    container_name: brasa_db
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${DB_PASSWORD:-brasa_local_troque_me}
+      MYSQL_DATABASE: ${DB_NAME:-brasa_pizzaria_db}
+    ports:
+      - "3307:3306"   # exposta em 3307 no host para não colidir com um MySQL local (ex: AutoForge na 3306)
+    volumes:
+      - brasa_mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-uroot", "-p${DB_PASSWORD:-brasa_local_troque_me}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    networks:
+      - brasa_net
+
+  backend:
+    build: ./backend
+    container_name: brasa_backend
+    restart: unless-stopped
+    environment:
+      DB_USER: root
+      DB_PASSWORD: ${DB_PASSWORD:-brasa_local_troque_me}
+      DB_HOST: db          # nome do serviço no compose — resolvido pela rede interna do Docker
+      DB_PORT: 3306         # porta interna do container (não confundir com o 3307 exposto no host)
+      DB_NAME: ${DB_NAME:-brasa_pizzaria_db}
+      JWT_SECRET: ${JWT_SECRET:-troque_esta_chave_em_producao_por_algo_aleatorio}
+      JWT_ALGORITHM: HS256
+      JWT_EXPIRE_MINUTES: 120
+      FUSO_HORARIO_HORAS: -3   # Brasília; usado para "hoje" na cozinha e nos relatórios
+      # senhas dos usuários criados na 1ª execução (cozinha@brasa.com e dono@brasa.com)
+      SENHA_PADRAO_COZINHA: ${SENHA_PADRAO_COZINHA:-brasa123}
+      SENHA_PADRAO_DONO: ${SENHA_PADRAO_DONO:-brasa123}
+    ports:
+      - "8002:8002"
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - brasa_net
+
+  frontend:
+    build: ./frontend
+    container_name: brasa_frontend
+    restart: unless-stopped
+    ports:
+      - "8080:80"
+    depends_on:
+      - backend
+    networks:
+      - brasa_net
+
+networks:
+  brasa_net:
+    driver: bridge
+
+volumes:
+  brasa_mysql_data:

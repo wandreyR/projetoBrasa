@@ -1,0 +1,545 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Gerencial — BRASA Pizzaria</title>
+<link rel="stylesheet" href="styles.css">
+<link rel="stylesheet" href="staff.css">
+</head>
+<body>
+
+<header class="brasa-header">
+  <div class="brasa-logo">
+    <span class="mark">BRA<em>SA</em></span>
+    <span class="tagline">área da equipe</span>
+  </div>
+  <div class="header-actions">
+    <nav class="header-nav">
+      <a href="cozinha.html">Cozinha</a>
+      <a href="gerencial.html" class="active">Gerencial</a>
+    </nav>
+    <div class="usuario-box" data-usuario></div>
+  </div>
+</header>
+
+<main class="staff-page" id="conteudo" hidden>
+
+  <div class="staff-title">
+    <div>
+      <p class="eyebrow">Visão do dono</p>
+      <h1>Gerencial</h1>
+    </div>
+  </div>
+
+  <div class="filtros" role="group" aria-label="Período">
+    <button type="button" class="tab" data-periodo="hoje">Hoje</button>
+    <button type="button" class="tab" data-periodo="7">7 dias</button>
+    <button type="button" class="tab active" data-periodo="30">30 dias</button>
+    <button type="button" class="tab" data-periodo="mes">Este mês</button>
+    <span class="datas">
+      <input type="date" id="dataInicio" aria-label="Data inicial">
+      <span>até</span>
+      <input type="date" id="dataFim" aria-label="Data final">
+    </span>
+  </div>
+
+  <section class="kpis" id="kpis" aria-live="polite"></section>
+
+  <section class="painel">
+    <div class="painel-head">
+      <div>
+        <h2>Faturamento x despesas por dia</h2>
+        <p class="sub">Pedidos cancelados não entram no faturamento.</p>
+      </div>
+      <div style="display:flex; gap:16px; align-items:center; flex-wrap:wrap;">
+        <div class="legenda">
+          <span><i style="background:var(--serie-faturamento)"></i>Faturamento</span>
+          <span><i style="background:var(--serie-despesas)"></i>Despesas</span>
+        </div>
+        <button type="button" class="btn-link" id="btnTabelaDias" aria-expanded="false">Ver tabela</button>
+      </div>
+    </div>
+    <div class="grafico" id="grafico">
+      <div class="tooltip" id="tooltip" hidden></div>
+    </div>
+    <div class="tabela-wrap" id="tabelaDias" hidden></div>
+  </section>
+
+  <div class="grid-2">
+    <section class="painel">
+      <div class="painel-head">
+        <div>
+          <h2>Mais vendidos</h2>
+          <p class="sub">Por receita no período</p>
+        </div>
+      </div>
+      <div class="tabela-wrap" id="topItens"></div>
+    </section>
+
+    <section class="painel">
+      <div class="painel-head">
+        <div>
+          <h2>Despesas por categoria</h2>
+          <p class="sub">Total no período</p>
+        </div>
+      </div>
+      <div class="tabela-wrap" id="despesasCategoria"></div>
+    </section>
+  </div>
+
+  <section class="painel" style="margin-top:20px;">
+    <div class="painel-head">
+      <div>
+        <h2>Despesas</h2>
+        <p class="sub">Lance aqui as saídas: ingredientes, salários, contas…</p>
+      </div>
+    </div>
+
+    <form class="form-despesa" id="formDespesa" novalidate>
+      <label class="field">
+        <span>Descrição</span>
+        <input type="text" name="descricao" required minlength="2" maxlength="160" placeholder="Ex.: Farinha 25kg">
+      </label>
+      <label class="field">
+        <span>Categoria</span>
+        <select name="categoria" required id="selCategoria"></select>
+      </label>
+      <label class="field">
+        <span>Valor (R$)</span>
+        <input type="number" name="valor" required min="0.01" step="0.01" inputmode="decimal" placeholder="0,00">
+      </label>
+      <label class="field">
+        <span>Data</span>
+        <input type="date" name="data" required>
+      </label>
+      <div class="botoes">
+        <button type="submit" class="btn btn-primary" id="btnSalvarDespesa">Adicionar</button>
+        <button type="button" class="btn btn-ghost" id="btnCancelarEdicao" hidden>Cancelar</button>
+      </div>
+    </form>
+
+    <div class="tabela-wrap" id="listaDespesas"></div>
+  </section>
+
+</main>
+
+<script src="staff.js"></script>
+<script>
+const CATEGORIAS = {
+  ingredientes: 'Ingredientes',
+  bebidas: 'Bebidas',
+  embalagens: 'Embalagens',
+  salarios: 'Salários',
+  aluguel: 'Aluguel',
+  contas: 'Contas (água, luz, gás)',
+  entregas: 'Entregas / motoboy',
+  marketing: 'Marketing',
+  manutencao: 'Manutenção',
+  impostos: 'Impostos',
+  outros: 'Outros',
+};
+
+const estado = { inicio: null, fim: null, resumo: null, despesas: [], editandoId: null };
+
+/* ---------- Período ---------- */
+
+function definirPeriodo(chave) {
+  const hoje = new Date();
+  let inicio = new Date(hoje);
+  if (chave === 'hoje') {
+    // mesmo dia
+  } else if (chave === 'mes') {
+    inicio = new Date(hoje.getFullYear(), hoje.getMonth(), 1);
+  } else {
+    inicio.setDate(hoje.getDate() - (Number(chave) - 1));
+  }
+  estado.inicio = dataISO(inicio);
+  estado.fim = dataISO(hoje);
+  document.getElementById('dataInicio').value = estado.inicio;
+  document.getElementById('dataFim').value = estado.fim;
+  document.querySelectorAll('[data-periodo]').forEach(b => b.classList.toggle('active', b.dataset.periodo === chave));
+  carregarTudo();
+}
+
+document.querySelectorAll('[data-periodo]').forEach(btn =>
+  btn.addEventListener('click', () => definirPeriodo(btn.dataset.periodo))
+);
+
+['dataInicio', 'dataFim'].forEach(id =>
+  document.getElementById(id).addEventListener('change', () => {
+    const inicio = document.getElementById('dataInicio').value;
+    const fim = document.getElementById('dataFim').value;
+    if (!inicio || !fim) return;
+    if (inicio > fim) { showToast('A data inicial deve ser anterior à final', 4000); return; }
+    estado.inicio = inicio;
+    estado.fim = fim;
+    document.querySelectorAll('[data-periodo]').forEach(b => b.classList.remove('active'));
+    carregarTudo();
+  })
+);
+
+function formatarDataCurta(iso) {
+  const [, m, d] = iso.split('-');
+  return `${d}/${m}`;
+}
+
+function formatarDataLonga(iso) {
+  const [a, m, d] = iso.split('-').map(Number);
+  return new Date(a, m - 1, d).toLocaleDateString('pt-BR', { weekday: 'short', day: '2-digit', month: '2-digit' });
+}
+
+/* ---------- Carregamento ---------- */
+
+async function carregarTudo() {
+  const conteudo = document.getElementById('conteudo');
+  conteudo.classList.add('estado-carregando');
+  const qs = `inicio=${estado.inicio}&fim=${estado.fim}`;
+  try {
+    const [resumo, despesas] = await Promise.all([
+      api(`/gerencial/resumo?${qs}`),
+      api(`/gerencial/despesas?${qs}`),
+    ]);
+    estado.resumo = resumo;
+    estado.despesas = despesas;
+    renderKpis();
+    renderGrafico();
+    renderTabelaDias();
+    renderTopItens();
+    renderDespesasCategoria();
+    renderListaDespesas();
+  } catch (e) {
+    if (!(e instanceof ErroSessao)) showToast(e.message, 5000);
+  } finally {
+    conteudo.classList.remove('estado-carregando');
+  }
+}
+
+/* ---------- KPIs ---------- */
+
+function renderKpis() {
+  const r = estado.resumo;
+  const lucroClasse = r.lucro >= 0 ? 'positivo' : 'negativo';
+  const margem = r.faturamento > 0 ? Math.round((r.lucro / r.faturamento) * 100) : null;
+  document.getElementById('kpis').innerHTML = `
+    <div class="kpi">
+      <div class="rotulo"><i class="chave" style="background:var(--serie-faturamento)"></i>Faturamento</div>
+      <div class="valor" title="${formatPrice(r.faturamento)}">${formatPrice(r.faturamento)}</div>
+      <div class="nota">${formatPrice(r.taxas_entrega)} em taxas de entrega</div>
+    </div>
+    <div class="kpi">
+      <div class="rotulo"><i class="chave" style="background:var(--serie-despesas)"></i>Despesas</div>
+      <div class="valor" title="${formatPrice(r.despesas)}">${formatPrice(r.despesas)}</div>
+      <div class="nota">${estado.despesas.length} lançamento(s)</div>
+    </div>
+    <div class="kpi lucro destaque">
+      <div class="rotulo">Resultado</div>
+      <div class="valor ${lucroClasse}" title="${formatPrice(r.lucro)}">${r.lucro >= 0 ? '▲' : '▼'} ${formatPrice(r.lucro)}</div>
+      <div class="nota">${margem === null ? 'Sem faturamento no período' : `Margem de ${margem}%`}</div>
+    </div>
+    <div class="kpi">
+      <div class="rotulo">Pedidos</div>
+      <div class="valor">${r.pedidos}</div>
+      <div class="nota">${r.pedidos_delivery} entrega · ${r.pedidos_retirada} retirada${r.pedidos_cancelados ? ` · ${r.pedidos_cancelados} cancelado(s)` : ''}</div>
+    </div>
+    <div class="kpi">
+      <div class="rotulo">Ticket médio</div>
+      <div class="valor">${formatPrice(r.ticket_medio)}</div>
+      <div class="nota">por pedido</div>
+    </div>`;
+}
+
+/* ---------- Gráfico de barras agrupadas (SVG) ---------- */
+
+function escalaBonita(maximo) {
+  if (maximo <= 0) return { max: 100, passo: 25 };
+  const bruto = maximo / 4;
+  const mag = 10 ** Math.floor(Math.log10(bruto));
+  const passo = [1, 2, 2.5, 5, 10].map(f => f * mag).find(p => p >= bruto);
+  return { max: Math.ceil(maximo / passo) * passo, passo };
+}
+
+function formatarEixo(v) {
+  if (v >= 1000) return `R$ ${(v / 1000).toLocaleString('pt-BR', { maximumFractionDigits: 1 })} mil`;
+  return `R$ ${v.toLocaleString('pt-BR')}`;
+}
+
+// Barra com cantos superiores arredondados e base reta na linha zero
+function pathBarra(x, y, w, h) {
+  if (h <= 0) return '';
+  const r = Math.min(4, w / 2, h);
+  return `M${x},${y + h}V${y + r}Q${x},${y} ${x + r},${y}H${x + w - r}Q${x + w},${y} ${x + w},${y + r}V${y + h}Z`;
+}
+
+function renderGrafico() {
+  const container = document.getElementById('grafico');
+  const tooltip = document.getElementById('tooltip');
+  container.querySelectorAll('svg, .vazio').forEach(el => el.remove());
+  tooltip.hidden = true;
+
+  const dias = estado.resumo.por_dia;
+  const semMovimento = dias.every(d => d.faturamento === 0 && d.despesas === 0);
+  if (semMovimento) {
+    container.insertAdjacentHTML('beforeend', `<div class="vazio">Sem faturamento nem despesas neste período.</div>`);
+    return;
+  }
+
+  const largura = container.clientWidth || 800;
+  const altura = 280;
+  const m = { topo: 12, dir: 8, base: 28, esq: 72 };
+  const areaW = largura - m.esq - m.dir;
+  const areaH = altura - m.topo - m.base;
+
+  const { max, passo } = escalaBonita(Math.max(...dias.flatMap(d => [d.faturamento, d.despesas])));
+  const y = v => m.topo + areaH - (v / max) * areaH;
+
+  const grupoW = areaW / dias.length;
+  const gap = 2;                                   // espaço entre as duas barras do dia
+  const barraW = Math.max(2, Math.min(28, (grupoW * 0.72 - gap) / 2));
+  const cor = {
+    faturamento: getComputedStyle(document.documentElement).getPropertyValue('--serie-faturamento').trim(),
+    despesas: getComputedStyle(document.documentElement).getPropertyValue('--serie-despesas').trim(),
+  };
+
+  // Rótulos do eixo X: no máximo ~10, sempre incluindo o primeiro e o último dia
+  const cadaN = Math.ceil(dias.length / Math.max(2, Math.floor(areaW / 70)));
+
+  let grade = '';
+  for (let v = 0; v <= max; v += passo) {
+    grade += `<line x1="${m.esq}" x2="${largura - m.dir}" y1="${y(v)}" y2="${y(v)}" class="${v === 0 ? 'base' : ''}"/>`;
+    grade += `<text x="${m.esq - 8}" y="${y(v) + 4}" text-anchor="end" class="rotulo-y">${formatarEixo(v)}</text>`;
+  }
+
+  let barras = '';
+  let rotulosX = '';
+  let hits = '';
+  dias.forEach((d, i) => {
+    const cx = m.esq + grupoW * i + grupoW / 2;
+    const xF = cx - gap / 2 - barraW;
+    const xD = cx + gap / 2;
+    barras += `<path d="${pathBarra(xF, y(d.faturamento), barraW, y(0) - y(d.faturamento))}" fill="${cor.faturamento}"/>`;
+    barras += `<path d="${pathBarra(xD, y(d.despesas), barraW, y(0) - y(d.despesas))}" fill="${cor.despesas}"/>`;
+    if (i % cadaN === 0 || i === dias.length - 1) {
+      rotulosX += `<text x="${cx}" y="${altura - 8}" text-anchor="middle">${formatarDataCurta(d.data)}</text>`;
+    }
+    // área de hover = coluna inteira do dia (maior que as barras)
+    hits += `<rect class="hit" data-i="${i}" x="${m.esq + grupoW * i}" y="${m.topo}" width="${grupoW}" height="${areaH}"/>`;
+  });
+
+  container.insertAdjacentHTML('beforeend', `
+    <svg viewBox="0 0 ${largura} ${altura}" role="img"
+         aria-label="Faturamento e despesas por dia de ${formatarDataCurta(dias[0].data)} a ${formatarDataCurta(dias[dias.length - 1].data)}">
+      <g class="grade">${grade.replace(/<text[^>]*>[^<]*<\/text>/g, '')}</g>
+      <g class="eixo">${grade.match(/<text[^>]*>[^<]*<\/text>/g).join('')}${rotulosX}</g>
+      <g>${hits}</g>
+      <g pointer-events="none">${barras}</g>
+    </svg>`);
+
+  const svg = container.querySelector('svg');
+  svg.addEventListener('mousemove', (event) => {
+    const hit = event.target.closest('.hit');
+    svg.querySelectorAll('.hit.ativo').forEach(h => h !== hit && h.classList.remove('ativo'));
+    if (!hit) { tooltip.hidden = true; return; }
+    hit.classList.add('ativo');
+    const d = dias[Number(hit.dataset.i)];
+    const resultado = d.faturamento - d.despesas;
+    tooltip.innerHTML = `
+      <div class="t-titulo">${formatarDataLonga(d.data)}</div>
+      <div class="t-linha"><i style="background:${cor.faturamento}"></i>Faturamento<b>${formatPrice(d.faturamento)}</b></div>
+      <div class="t-linha"><i style="background:${cor.despesas}"></i>Despesas<b>${formatPrice(d.despesas)}</b></div>
+      <div class="t-linha">Resultado<b>${formatPrice(resultado)}</b></div>
+      <div class="t-linha">Pedidos<b>${d.pedidos}</b></div>`;
+    const caixa = container.getBoundingClientRect();
+    const xTip = Math.min(Math.max(event.clientX - caixa.left, 95), caixa.width - 95);
+    tooltip.style.left = `${xTip}px`;
+    tooltip.style.top = `${event.clientY - caixa.top}px`;
+    tooltip.hidden = false;
+  });
+  svg.addEventListener('mouseleave', () => {
+    tooltip.hidden = true;
+    svg.querySelectorAll('.hit.ativo').forEach(h => h.classList.remove('ativo'));
+  });
+}
+
+let timerResize = null;
+window.addEventListener('resize', () => {
+  clearTimeout(timerResize);
+  timerResize = setTimeout(() => estado.resumo && renderGrafico(), 150);
+});
+
+/* ---------- Tabela por dia (alternativa acessível ao gráfico) ---------- */
+
+function renderTabelaDias() {
+  const linhas = estado.resumo.por_dia.slice().reverse().map(d => `
+    <tr>
+      <td>${formatarDataLonga(d.data)}</td>
+      <td class="num">${d.pedidos}</td>
+      <td class="num">${formatPrice(d.faturamento)}</td>
+      <td class="num">${formatPrice(d.despesas)}</td>
+      <td class="num">${formatPrice(d.faturamento - d.despesas)}</td>
+    </tr>`).join('');
+  document.getElementById('tabelaDias').innerHTML = `
+    <table class="tabela">
+      <thead><tr><th>Dia</th><th class="num">Pedidos</th><th class="num">Faturamento</th><th class="num">Despesas</th><th class="num">Resultado</th></tr></thead>
+      <tbody>${linhas}</tbody>
+    </table>`;
+}
+
+document.getElementById('btnTabelaDias').addEventListener('click', (event) => {
+  const tabela = document.getElementById('tabelaDias');
+  const grafico = document.getElementById('grafico');
+  const mostrarTabela = tabela.hidden;
+  tabela.hidden = !mostrarTabela;
+  grafico.hidden = mostrarTabela;
+  event.currentTarget.textContent = mostrarTabela ? 'Ver gráfico' : 'Ver tabela';
+  event.currentTarget.setAttribute('aria-expanded', String(mostrarTabela));
+  if (!mostrarTabela) renderGrafico();
+});
+
+/* ---------- Rankings ---------- */
+
+function tabelaComBarra(linhas, corVar, colunas) {
+  const maior = Math.max(...linhas.map(l => l.valor), 0) || 1;
+  return `
+    <table class="tabela">
+      <thead><tr>${colunas.map((c, i) => `<th class="${i > 0 && i < colunas.length - 1 ? 'num' : ''}">${c}</th>`).join('')}</tr></thead>
+      <tbody>${linhas.map(l => `
+        <tr>
+          <td>${escapeHTML(l.nome)}</td>
+          ${l.extra !== undefined ? `<td class="num">${l.extra}</td>` : ''}
+          <td class="num">${formatPrice(l.valor)}</td>
+          <td class="barra-cel"><div class="barra"><i style="width:${(l.valor / maior) * 100}%; background:var(${corVar})"></i></div></td>
+        </tr>`).join('')}
+      </tbody>
+    </table>`;
+}
+
+function renderTopItens() {
+  const itens = estado.resumo.top_itens;
+  document.getElementById('topItens').innerHTML = itens.length
+    ? tabelaComBarra(itens.map(i => ({ nome: i.nome, extra: i.quantidade, valor: i.receita })), '--serie-faturamento', ['Item', 'Qtd.', 'Receita', ''])
+    : `<p class="tabela-vazia">Nenhuma venda no período.</p>`;
+}
+
+function renderDespesasCategoria() {
+  const cats = estado.resumo.despesas_por_categoria;
+  document.getElementById('despesasCategoria').innerHTML = cats.length
+    ? tabelaComBarra(cats.map(c => ({ nome: CATEGORIAS[c.categoria] || c.categoria, valor: c.total })), '--serie-despesas', ['Categoria', 'Total', ''])
+    : `<p class="tabela-vazia">Nenhuma despesa lançada no período.</p>`;
+}
+
+/* ---------- Despesas: lista e formulário ---------- */
+
+function renderListaDespesas() {
+  const lista = estado.despesas;
+  document.getElementById('listaDespesas').innerHTML = lista.length ? `
+    <table class="tabela">
+      <thead><tr><th>Data</th><th>Descrição</th><th>Categoria</th><th class="num">Valor</th><th></th></tr></thead>
+      <tbody>${lista.map(d => `
+        <tr>
+          <td>${formatarDataCurta(d.data)}</td>
+          <td>${escapeHTML(d.descricao)}</td>
+          <td>${escapeHTML(CATEGORIAS[d.categoria] || d.categoria)}</td>
+          <td class="num">${formatPrice(d.valor)}</td>
+          <td class="acoes">
+            <button type="button" class="link-acao" data-editar="${d.id}">Editar</button>
+            <button type="button" class="link-acao perigo" data-excluir="${d.id}">Excluir</button>
+          </td>
+        </tr>`).join('')}
+      </tbody>
+    </table>` : `<p class="tabela-vazia">Nenhuma despesa lançada no período.</p>`;
+}
+
+const formDespesa = document.getElementById('formDespesa');
+const btnSalvarDespesa = document.getElementById('btnSalvarDespesa');
+const btnCancelarEdicao = document.getElementById('btnCancelarEdicao');
+
+document.getElementById('selCategoria').innerHTML =
+  `<option value="" disabled selected>Escolha…</option>` +
+  Object.entries(CATEGORIAS).map(([v, l]) => `<option value="${v}">${l}</option>`).join('');
+
+function resetarFormDespesa() {
+  formDespesa.reset();
+  formDespesa.elements.data.value = dataISO();
+  estado.editandoId = null;
+  btnSalvarDespesa.textContent = 'Adicionar';
+  btnCancelarEdicao.hidden = true;
+}
+
+formDespesa.addEventListener('submit', async (event) => {
+  event.preventDefault();
+  if (!formDespesa.reportValidity()) return;
+  const f = formDespesa.elements;
+  const corpo = {
+    descricao: f.descricao.value.trim(),
+    categoria: f.categoria.value,
+    valor: Number(f.valor.value),
+    data: f.data.value,
+  };
+  btnSalvarDespesa.disabled = true;
+  try {
+    if (estado.editandoId) {
+      await api(`/gerencial/despesas/${estado.editandoId}`, { method: 'PUT', body: corpo });
+      showToast('Despesa atualizada');
+    } else {
+      await api('/gerencial/despesas', { method: 'POST', body: corpo });
+      showToast('Despesa adicionada');
+    }
+    resetarFormDespesa();
+    await carregarTudo();
+  } catch (e) {
+    if (!(e instanceof ErroSessao)) showToast(e.message, 5000);
+  } finally {
+    btnSalvarDespesa.disabled = false;
+  }
+});
+
+btnCancelarEdicao.addEventListener('click', resetarFormDespesa);
+
+document.getElementById('listaDespesas').addEventListener('click', async (event) => {
+  const editar = event.target.closest('[data-editar]');
+  const excluir = event.target.closest('[data-excluir]');
+
+  if (editar) {
+    const d = estado.despesas.find(x => x.id === Number(editar.dataset.editar));
+    if (!d) return;
+    const f = formDespesa.elements;
+    f.descricao.value = d.descricao;
+    f.categoria.value = d.categoria;
+    f.valor.value = d.valor;
+    f.data.value = d.data;
+    estado.editandoId = d.id;
+    btnSalvarDespesa.textContent = 'Salvar alterações';
+    btnCancelarEdicao.hidden = false;
+    f.descricao.focus();
+    formDespesa.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }
+
+  if (excluir) {
+    const d = estado.despesas.find(x => x.id === Number(excluir.dataset.excluir));
+    if (!d || !confirm(`Excluir a despesa "${d.descricao}" (${formatPrice(d.valor)})?`)) return;
+    try {
+      await api(`/gerencial/despesas/${d.id}`, { method: 'DELETE' });
+      if (estado.editandoId === d.id) resetarFormDespesa();
+      showToast('Despesa excluída');
+      await carregarTudo();
+    } catch (e) {
+      if (!(e instanceof ErroSessao)) showToast(e.message, 5000);
+    }
+  }
+});
+
+/* ---------- Início ---------- */
+
+iniciarAreaEquipe({
+  cargos: ['admin'],
+  onEntrar: () => {
+    document.getElementById('conteudo').hidden = false;
+    resetarFormDespesa();
+    definirPeriodo('30');
+  },
+});
+</script>
+
+</body>
+</html>
