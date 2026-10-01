@@ -87,6 +87,7 @@
       <div class="step">
         <p class="step-label">Passo 4</p>
         <h3>Escolha os ingredientes</h3>
+        <p class="step-dica">Quer mais? Toque de novo para dobrar a porção (até 3×). Use − para tirar.</p>
         <div class="chip-row" id="ingredientesRow"></div>
       </div>
 
@@ -163,7 +164,7 @@ const state = {
   size: 'M',
   massa: 'tradicional',
   molho: 'tomate',
-  ingredientes: new Set(['mussarela']),
+  ingredientes: new Map([['mussarela', 1]]), // id do adicional → porções na pizza
   qtd: 1,
 };
 
@@ -207,10 +208,10 @@ function ajustarSelecaoEsgotada() {
   if (removidos.length) showToast(`Esgotado para o tamanho ${state.size}: ${removidos.join(', ')}`, 4000);
 }
 
-function renderChips(containerId, options, selectedId, onSelect, multi) {
+function renderChips(containerId, options, selectedId, onSelect) {
   const el = document.getElementById(containerId);
   el.innerHTML = options.map(opt => {
-    const isSelected = multi ? state.ingredientes.has(opt.id) : selectedId === opt.id;
+    const isSelected = selectedId === opt.id;
     const esgotado = estaEsgotado(opt);
     const etiqueta = esgotado ? '<span class="add-price">esgotado</span>'
       : opt.add > 0 ? `<span class="add-price">+${formatPrice(opt.add)}</span>` : '';
@@ -231,6 +232,56 @@ function renderChips(containerId, options, selectedId, onSelect, multi) {
   });
 }
 
+const MAX_PORCOES = 3; // porções do mesmo adicional por pizza
+
+function renderAdicionais() {
+  const el = document.getElementById('ingredientesRow');
+  el.innerHTML = INGREDIENTES.map(opt => {
+    const qtd = state.ingredientes.get(opt.id) || 0;
+    const esgotado = estaEsgotado(opt);
+    const etiqueta = esgotado ? '<span class="add-price">esgotado</span>'
+      : `<span class="add-price">+${formatPrice(opt.add)}</span>`;
+    return `
+      <div class="chip chip-adicional ${qtd ? 'selected' : ''} ${esgotado ? 'esgotado' : ''}">
+        <button type="button" class="chip-mais" data-mais="${opt.id}" ${esgotado ? 'disabled' : ''}
+                aria-label="Adicionar ${opt.nome}${qtd ? ` (${qtd} na pizza)` : ''}">
+          <img class="chip-foto" src="img/ingredientes/${opt.id}.jpg" alt="" width="28" height="28" loading="lazy">
+          ${opt.nome}
+          ${qtd > 1 ? `<span class="chip-qtd">${qtd}×</span>` : ''}
+          ${etiqueta}
+        </button>
+        ${qtd ? `<button type="button" class="chip-menos" data-menos="${opt.id}" aria-label="Tirar uma porção de ${opt.nome}">−</button>` : ''}
+      </div>`;
+  }).join('');
+}
+
+document.getElementById('ingredientesRow').addEventListener('click', (event) => {
+  const mais = event.target.closest('[data-mais]');
+  const menos = event.target.closest('[data-menos]');
+  if (mais && !mais.disabled) {
+    const id = mais.dataset.mais;
+    const qtd = state.ingredientes.get(id) || 0;
+    if (qtd >= MAX_PORCOES) {
+      showToast(`Máximo de ${MAX_PORCOES} porções do mesmo adicional`);
+      return;
+    }
+    state.ingredientes.set(id, qtd + 1);
+  } else if (menos) {
+    const id = menos.dataset.menos;
+    const qtd = (state.ingredientes.get(id) || 0) - 1;
+    if (qtd > 0) state.ingredientes.set(id, qtd);
+    else state.ingredientes.delete(id);
+  } else {
+    return;
+  }
+  renderAll();
+});
+
+// Lista com um item por porção: ['Bacon', 'Bacon', 'Milho'] (usada no preview e no pedido)
+function porcoesEscolhidas() {
+  return INGREDIENTES.flatMap(i => Array(state.ingredientes.get(i.id) || 0).fill(i));
+}
+
 function renderSizeDial() {
   document.querySelectorAll('.size-option').forEach(btn => {
     btn.classList.toggle('selected', btn.dataset.size === state.size);
@@ -242,9 +293,9 @@ function calcPrice() {
   const massaAdd = MASSAS.find(m => m.id === state.massa).add;
   const molhoAdd = MOLHOS.find(m => m.id === state.molho).add;
   let ingAdd = 0;
-  state.ingredientes.forEach(id => {
+  state.ingredientes.forEach((qtd, id) => {
     const ing = INGREDIENTES.find(i => i.id === id);
-    if (ing) ingAdd += ing.add;
+    if (ing) ingAdd += ing.add * qtd;
   });
   return base + massaAdd + molhoAdd + ingAdd;
 }
@@ -256,7 +307,7 @@ function renderPreview() {
   const preview = document.getElementById('pizzaPreview');
   preview.querySelectorAll('.topping').forEach(t => t.remove());
 
-  const selected = INGREDIENTES.filter(i => state.ingredientes.has(i.id));
+  const selected = porcoesEscolhidas();
   const positions = generateRingPositions(Math.max(selected.length, 1), 28);
   selected.forEach((ing, i) => {
     const jitterR = 22 + (i % 3) * 6; // pequenas camadas de raio para não empilhar tudo igual
@@ -280,10 +331,7 @@ function renderAll() {
   renderSizeDial();
   renderChips('massaRow', MASSAS, state.massa, id => (state.massa = id));
   renderChips('molhoRow', MOLHOS, state.molho, id => (state.molho = id));
-  renderChips('ingredientesRow', INGREDIENTES, null, id => {
-    if (state.ingredientes.has(id)) state.ingredientes.delete(id);
-    else state.ingredientes.add(id);
-  }, true);
+  renderAdicionais();
   renderPreview();
   document.getElementById('qtyVal').textContent = state.qtd;
 }
@@ -315,7 +363,9 @@ document.getElementById('addCustomBtn').addEventListener('click', () => {
   }
   const massaNome = MASSAS.find(m => m.id === state.massa).nome;
   const molhoNome = MOLHOS.find(m => m.id === state.molho).nome;
-  const ingNomes = INGREDIENTES.filter(i => state.ingredientes.has(i.id)).map(i => i.nome);
+  const ingNomes = porcoesEscolhidas().map(i => i.nome);
+  const ingTexto = INGREDIENTES.filter(i => state.ingredientes.has(i.id))
+    .map(i => (state.ingredientes.get(i.id) > 1 ? `${i.nome} (${state.ingredientes.get(i.id)}×)` : i.nome));
   const precoUnit = calcPrice();
 
   addToCart({
@@ -325,7 +375,7 @@ document.getElementById('addCustomBtn').addEventListener('click', () => {
     tamanho: state.size,
     precoUnit,
     qtd: state.qtd,
-    detalhes: `${massaNome} · ${molhoNome} · ${ingNomes.join(', ') || 'sem ingredientes extras'}`,
+    detalhes: `${massaNome} · ${molhoNome} · ${ingTexto.join(', ') || 'sem ingredientes extras'}`,
     ingredientes: [massaNome, molhoNome, ...ingNomes], // usado pela API para baixar o estoque (kg)
     customId: `custom-${Date.now()}`,
   });

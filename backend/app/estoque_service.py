@@ -1,5 +1,5 @@
 """Regras de estoque: saldo, alertas, baixa automática por pedido e estorno."""
-from collections import defaultdict
+from collections import Counter, defaultdict
 from typing import Dict, Iterable, List, Optional
 
 from sqlalchemy import func
@@ -124,12 +124,13 @@ def consumo_do_pedido(db: Session, itens: Iterable[models.PedidoItem], ingredien
         }
         for idx, nomes in ingredientes_custom.items():
             pizza = itens[idx]
-            for nome in {n.lower() for n in nomes}:  # ingrediente repetido conta uma vez
+            # adicional repetido = porção extra (ex.: ["Bacon", "Bacon"] baixa bacon em dobro)
+            for nome, porcoes in Counter(n.lower() for n in nomes).items():
                 receita = receitas.get(nome)
                 if not receita:
                     continue
                 por_pizza = {"P": receita.qtd_p, "M": receita.qtd_m, "G": receita.qtd_g}.get(pizza.tamanho or "M", 0)
-                consumo[receita.estoque_item_id] += por_pizza * pizza.quantidade
+                consumo[receita.estoque_item_id] += por_pizza * porcoes * pizza.quantidade
 
     return {k: round(v, CASAS) for k, v in consumo.items() if v > 0}
 
