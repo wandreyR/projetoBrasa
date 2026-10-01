@@ -8,7 +8,9 @@ from sqlalchemy.orm import Session, joinedload
 from .. import models, schemas
 from ..database import get_db, SessionLocal
 from ..auth import get_current_user, usuario_do_token
-from ..estoque_service import ajustar_por_mudanca_de_status, baixar_pedido, consumo_do_pedido, evento_estoque
+from ..estoque_service import (
+    EstoqueInsuficiente, ajustar_por_mudanca_de_status, baixar_pedido, consumo_do_pedido, evento_estoque,
+)
 from ..tempo import hoje_local, inicio_do_dia_em_utc
 from ..websocket_manager import manager
 
@@ -170,6 +172,9 @@ async def criar_pedido(dados: schemas.PedidoIn, db: Session = Depends(get_db)):
         db.flush()  # gera pedido.id para o histórico do estoque
         estoque_mudou = baixar_pedido(db, pedido, consumo)
         db.commit()  # cliente + pedido + itens + baixa de estoque numa única transação
+    except EstoqueInsuficiente as e:
+        db.rollback()  # nada é gravado: nem cliente, nem pedido, nem baixa
+        raise HTTPException(status_code=409, detail=e.mensagem)
     except SQLAlchemyError:
         db.rollback()
         raise HTTPException(status_code=500, detail="Não foi possível registrar o pedido. Tente novamente.")
@@ -243,7 +248,11 @@ async def atualizar_status(
     status_anterior = pedido.status
     pedido.status = dados.status
     # cancelou → devolve ao estoque o que foi baixado automaticamente; reabriu → baixa de novo
-    estoque_mudou = ajustar_por_mudanca_de_status(db, pedido, status_anterior, usuario_atual.id)
+    try:
+        estoque_mudou = ajustar_por_mudanca_de_status(db, pedido, status_anterior, usuario_atual.id)
+    except EstoqueInsuficiente as e:
+        db.rollback()
+        raise HTTPException(status_code=409, detail=f"Não dá para reabrir o pedido. {e.mensagem}")
     db.commit()
     pedido = _carregar_pedido(db, pedido_id)
 

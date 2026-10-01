@@ -191,7 +191,7 @@ class UnidadeEstoque(str, enum.Enum):
 
 
 # Limite padrão de alerta quando o item é cadastrado sem um mínimo próprio
-MINIMO_PADRAO = {UnidadeEstoque.un: 20.0, UnidadeEstoque.kg: 10.0}
+MINIMO_PADRAO = {UnidadeEstoque.un: 10.0, UnidadeEstoque.kg: 10.0}
 
 
 class TipoMovimentacao(str, enum.Enum):

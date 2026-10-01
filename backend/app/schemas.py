@@ -50,6 +50,11 @@ class IngredienteOut(BaseModel):
         from_attributes = True
 
 
+class DisponibilidadeOut(BaseModel):
+    bebidas_esgotadas: List[str]
+    ingredientes_esgotados: dict  # {"P": [nomes], "M": [...], "G": [...]}
+
+
 # ---------------------------------------------------------------------
 # Pedidos
 # ---------------------------------------------------------------------

@@ -10,6 +10,19 @@ from . import models
 CASAS = 3  # kg com precisão de grama
 
 
+class EstoqueInsuficiente(Exception):
+    """Venda proibida: algum item não tem saldo para o pedido."""
+
+    def __init__(self, faltas: List[str]):
+        self.faltas = faltas
+        super().__init__(self.mensagem)
+
+    @property
+    def mensagem(self) -> str:
+        return ("Sem estoque suficiente para: " + "; ".join(self.faltas)
+                + ". Ajuste o carrinho e tente novamente.")
+
+
 def status_item(item: models.EstoqueItem) -> str:
     """ok | baixo (abaixo do mínimo) | zerado (sem estoque)."""
     if item.quantidade <= 0:
@@ -57,10 +70,7 @@ def movimentar(
     observacao: Optional[str] = None,
 ) -> models.MovimentacaoEstoque:
     """Aplica a variação no saldo e registra o histórico (não faz commit).
-
-    O saldo pode ficar negativo: a venda nunca é bloqueada por estoque, e o
-    número negativo mostra que a contagem precisa ser corrigida.
-    """
+    Quem chama garante que o saldo não fica negativo (ver travar_e_conferir)."""
     item.quantidade = round(item.quantidade + delta, CASAS)
     mov = models.MovimentacaoEstoque(
         estoque_item=item,
@@ -124,10 +134,38 @@ def consumo_do_pedido(db: Session, itens: Iterable[models.PedidoItem], ingredien
     return {k: round(v, CASAS) for k, v in consumo.items() if v > 0}
 
 
+def _fmt(valor: float, unidade: models.UnidadeEstoque) -> str:
+    """8.95 kg → "8,95 kg"; 3.0 un → "3 un"."""
+    return f"{round(max(valor, 0), CASAS):g}".replace(".", ",") + f" {unidade.value}"
+
+
+def travar_e_conferir(db: Session, consumo: Dict[int, float]) -> List[models.EstoqueItem]:
+    """Trava as linhas do estoque (SELECT ... FOR UPDATE) e confere se há saldo.
+
+    A trava vale até o commit: dois pedidos simultâneos pela última lata não
+    passam os dois. Levanta EstoqueInsuficiente se faltar qualquer item.
+    """
+    itens = (
+        db.query(models.EstoqueItem)
+        .filter(models.EstoqueItem.id.in_(consumo.keys()))
+        .order_by(models.EstoqueItem.id)  # ordem fixa evita deadlock entre pedidos
+        .with_for_update()
+        .all()
+    )
+    faltas = [
+        f"{i.nome} (restam {_fmt(i.quantidade, i.unidade)})" if i.quantidade > 0 else f"{i.nome} (esgotado)"
+        for i in itens
+        if i.quantidade + 10 ** -CASAS / 2 < consumo[i.id]
+    ]
+    if faltas:
+        raise EstoqueInsuficiente(faltas)
+    return itens
+
+
 def baixar_pedido(db: Session, pedido: models.Pedido, consumo: Dict[int, float]) -> bool:
     if not consumo:
         return False
-    itens = db.query(models.EstoqueItem).filter(models.EstoqueItem.id.in_(consumo.keys())).all()
+    itens = travar_e_conferir(db, consumo)
     for item in itens:
         movimentar(db, item, -consumo[item.id], models.TipoMovimentacao.pedido,
                    pedido_id=pedido.id, observacao=f"Pedido #{pedido.id}")
@@ -165,6 +203,8 @@ def ajustar_por_mudanca_de_status(
             vezes[mov.estoque_item_id] = vezes.get(mov.estoque_item_id, 0) + 1
         saldo = {k: v / vezes[k] for k, v in originais.items()}  # valor de uma baixa
         acao, tipo, texto = 1, models.TipoMovimentacao.pedido, "Pedido #{} reaberto"
+        # reabrir também é uma venda: precisa haver saldo
+        travar_e_conferir(db, {k: -v for k, v in saldo.items() if v < 0})
     else:
         return False
 

@@ -56,41 +56,51 @@
 
   <div class="menu-grid" id="menuGrid"></div>
 
+  <p class="creditos-link"><a href="creditos.html">Créditos das fotos</a></p>
+
 </main>
 
 
 <script src="cart.js"></script>
 <script>
 const PIZZAS = [
-  { id: 'margherita', nome: 'Margherita', cat: 'tradicionais', desc: 'Molho de tomate, mussarela e manjericão fresco', cor: '#C1391F', toppings: ['#4C6444','#FFFBF3','#4C6444'], precos: { P: 32, M: 42, G: 52 } },
-  { id: 'calabresa', nome: 'Calabresa', cat: 'tradicionais', desc: 'Molho de tomate, mussarela, calabresa e cebola', cor: '#9A2C17', toppings: ['#5A2E1F','#F4E9D8','#5A2E1F'], precos: { P: 34, M: 44, G: 54 } },
-  { id: 'portuguesa', nome: 'Portuguesa', cat: 'tradicionais', desc: 'Presunto, ovos, cebola, azeitona e mussarela', cor: '#C1391F', toppings: ['#F4E9D8','#2B1810','#D4A017'], precos: { P: 36, M: 47, G: 58 } },
-  { id: 'frango-catupiry', nome: 'Frango com Catupiry', cat: 'especiais', desc: 'Frango desfiado, catupiry cremoso e milho', cor: '#D4A017', toppings: ['#FFFBF3','#F4E9D8','#D4A017'], precos: { P: 36, M: 47, G: 58 } },
-  { id: 'quatro-queijos', nome: 'Quatro Queijos', cat: 'especiais', desc: 'Mussarela, provolone, parmesão e gorgonzola', cor: '#D4A017', toppings: ['#FFFBF3','#F4E9D8','#E9C989'], precos: { P: 38, M: 49, G: 60 } },
-  { id: 'pepperoni', nome: 'Pepperoni', cat: 'tradicionais', desc: 'Molho de tomate, mussarela e pepperoni picante', cor: '#C1391F', toppings: ['#9A2C17','#9A2C17','#9A2C17'], precos: { P: 37, M: 48, G: 59 } },
-  { id: 'toscana', nome: 'Toscana', cat: 'especiais', desc: 'Linguiça toscana, pimentão e cebola roxa', cor: '#9A2C17', toppings: ['#5A2E1F','#4C6444','#6B3A5C'], precos: { P: 38, M: 49, G: 60 } },
-  { id: 'vegetariana', nome: 'Vegetariana', cat: 'especiais', desc: 'Abobrinha, berinjela, tomate seco e rúcula', cor: '#4C6444', toppings: ['#8CA05C','#5C3A5C','#7A3B2E'], precos: { P: 36, M: 47, G: 58 } },
-  { id: 'choco-morango', nome: 'Chocolate com Morango', cat: 'doces', desc: 'Chocolate ao leite derretido e morango fatiado', cor: '#5A3220', toppings: ['#C1391F','#C1391F','#F4E9D8'], precos: { P: 34, M: 44, G: 54 } },
-  { id: 'banana-canela', nome: 'Banana com Canela', cat: 'doces', desc: 'Banana, canela e leite condensado', cor: '#D4A017', toppings: ['#E9C989','#8B5A2B','#FFFBF3'], precos: { P: 32, M: 42, G: 52 } },
-  { id: 'coca-cola', nome: 'Coca-Cola 350ml', cat: 'bebidas', desc: 'Lata gelada', cor: '#7A1E12', toppings: [], precos: { Único: 6 } },
-  { id: 'guarana', nome: 'Guaraná 350ml', cat: 'bebidas', desc: 'Lata gelada', cor: '#8B7A1E', toppings: [], precos: { Único: 6 } },
-  { id: 'suco-natural', nome: 'Suco Natural', cat: 'bebidas', desc: 'Feito na hora — pergunte o sabor do dia', cor: '#D4A017', toppings: [], precos: { Único: 8 } },
-  { id: 'agua', nome: 'Água Mineral', cat: 'bebidas', desc: 'Com ou sem gás', cor: '#4C7A8B', toppings: [], precos: { Único: 4 } },
+  { id: 'margherita', nome: 'Margherita', cat: 'tradicionais', desc: 'Molho de tomate, mussarela e manjericão fresco', precos: { P: 32, M: 42, G: 52 } },
+  { id: 'calabresa', nome: 'Calabresa', cat: 'tradicionais', desc: 'Molho de tomate, mussarela, calabresa e cebola', precos: { P: 34, M: 44, G: 54 } },
+  { id: 'portuguesa', nome: 'Portuguesa', cat: 'tradicionais', desc: 'Presunto, ovos, cebola, azeitona e mussarela', precos: { P: 36, M: 47, G: 58 } },
+  { id: 'frango-catupiry', nome: 'Frango com Catupiry', cat: 'especiais', desc: 'Frango desfiado, catupiry cremoso e milho', precos: { P: 36, M: 47, G: 58 } },
+  { id: 'quatro-queijos', nome: 'Quatro Queijos', cat: 'especiais', desc: 'Mussarela, provolone, parmesão e gorgonzola', precos: { P: 38, M: 49, G: 60 } },
+  { id: 'pepperoni', nome: 'Pepperoni', cat: 'tradicionais', desc: 'Molho de tomate, mussarela e pepperoni picante', precos: { P: 37, M: 48, G: 59 } },
+  { id: 'toscana', nome: 'Toscana', cat: 'especiais', desc: 'Linguiça toscana, pimentão e cebola roxa', precos: { P: 38, M: 49, G: 60 } },
+  { id: 'vegetariana', nome: 'Vegetariana', cat: 'especiais', desc: 'Abobrinha, berinjela, tomate seco e rúcula', precos: { P: 36, M: 47, G: 58 } },
+  { id: 'choco-morango', nome: 'Chocolate com Morango', cat: 'doces', desc: 'Chocolate ao leite derretido e morango fatiado', precos: { P: 34, M: 44, G: 54 } },
+  { id: 'banana-canela', nome: 'Banana com Canela', cat: 'doces', desc: 'Banana, canela e leite condensado', precos: { P: 32, M: 42, G: 52 } },
+  { id: 'coca-cola', nome: 'Coca-Cola 350ml', cat: 'bebidas', desc: 'Lata gelada', precos: { Único: 6 } },
+  { id: 'guarana', nome: 'Guaraná 350ml', cat: 'bebidas', desc: 'Lata gelada', precos: { Único: 6 } },
+  { id: 'suco-natural', nome: 'Suco Natural', cat: 'bebidas', desc: 'Feito na hora — pergunte o sabor do dia', precos: { Único: 8 } },
+  { id: 'agua', nome: 'Água Mineral', cat: 'bebidas', desc: 'Com ou sem gás', precos: { Único: 4 } },
 ];
 
-// Posições fixas para os "toppings" ilustrativos nos círculos das pizzas
-const DOT_POS = [
-  { top: '32%', left: '38%' }, { top: '55%', left: '65%' }, { top: '68%', left: '35%' }
-];
+// Foto real de cada produto: img/pizzas/<id>.jpg ou img/bebidas/<id>.jpg
+function fotoHTML(p) {
+  const pasta = p.cat === 'bebidas' ? 'bebidas' : 'pizzas';
+  return `<img src="img/${pasta}/${p.id}.jpg" alt="${p.nome}" loading="lazy" width="600" height="600">`;
+}
 
-function pizzaThumbHTML(pizza) {
-  if (pizza.cat === 'bebidas') {
-    return `<div class="pizza-thumb" style="background:${pizza.cor}"></div>`;
-  }
-  const dots = pizza.toppings.map((c, i) =>
-    `<span class="dot" style="background:${c}; top:${DOT_POS[i].top}; left:${DOT_POS[i].left}"></span>`
-  ).join('');
-  return `<div class="pizza-thumb" style="background:${pizza.cor}">${dots}</div>`;
+// Bebidas sem estoque (a venda de item zerado é proibida — a API também recusa)
+let bebidasEsgotadas = new Set();
+
+async function carregarDisponibilidade() {
+  try {
+    const resp = await fetch(`${API_URL}/cardapio/disponibilidade`);
+    if (!resp.ok) return;
+    const dados = await resp.json();
+    bebidasEsgotadas = new Set(dados.bebidas_esgotadas);
+    renderMenu(document.querySelector('.tab.active').dataset.cat);
+  } catch (e) { /* sem API: mostra tudo; a API recusa no fechamento se faltar */ }
+}
+
+function estaEsgotado(p) {
+  return p.cat === 'bebidas' && bebidasEsgotadas.has(p.nome);
 }
 
 function sizeOptionsHTML(precos) {
@@ -101,15 +111,16 @@ function renderMenu(filter) {
   const grid = document.getElementById('menuGrid');
   const items = PIZZAS.filter(p => filter === 'todas' || p.cat === filter);
   grid.innerHTML = items.map(p => `
-    <article class="pizza-card">
-      <div class="thumb-wrap">${pizzaThumbHTML(p)}</div>
+    <article class="pizza-card ${estaEsgotado(p) ? 'esgotado' : ''}">
+      <div class="foto">${fotoHTML(p)}${estaEsgotado(p) ? '<span class="selo-esgotado">Esgotado</span>' : ''}</div>
       <h3>${p.nome}</h3>
       <p class="desc">${p.desc}</p>
       <div class="card-controls">
-        <select class="size-select" data-id="${p.id}">
+        <select class="size-select" data-id="${p.id}" ${estaEsgotado(p) ? 'disabled' : ''}>
           ${sizeOptionsHTML(p.precos)}
         </select>
-        <button class="btn-add-icon" data-add="${p.id}" aria-label="Adicionar ${p.nome} ao carrinho">+</button>
+        <button class="btn-add-icon" data-add="${p.id}" ${estaEsgotado(p) ? 'disabled' : ''}
+                aria-label="${estaEsgotado(p) ? `${p.nome} esgotado` : `Adicionar ${p.nome} ao carrinho`}">+</button>
       </div>
     </article>
   `).join('');
@@ -118,6 +129,7 @@ function renderMenu(filter) {
     btn.addEventListener('click', () => {
       const id = btn.dataset.add;
       const pizza = PIZZAS.find(p => p.id === id);
+      if (estaEsgotado(pizza)) return;
       const select = grid.querySelector(`.size-select[data-id="${id}"]`);
       const tamanho = select.value;
       addToCart({
@@ -143,6 +155,7 @@ document.querySelectorAll('.tab').forEach(tab => {
 });
 
 renderMenu('todas');
+carregarDisponibilidade();
 </script>
 
 </body>

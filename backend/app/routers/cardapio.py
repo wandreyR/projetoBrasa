@@ -31,3 +31,35 @@ def listar_ingredientes(
     if tipo:
         query = query.filter(models.Ingrediente.tipo == tipo)
     return query.order_by(models.Ingrediente.nome).all()
+
+
+@router.get("/disponibilidade", response_model=schemas.DisponibilidadeOut)
+def disponibilidade(db: Session = Depends(get_db)):
+    """O que está esgotado agora, para o site desabilitar antes do cliente tentar comprar.
+
+    - bebidas_esgotadas: bebidas cujo item de estoque não tem 1 unidade
+    - ingredientes_esgotados: por tamanho, ingredientes da pizza montada sem saldo para 1 pizza
+    Itens sem controle de estoque (sem vínculo) são sempre considerados disponíveis.
+    """
+    bebidas = (
+        db.query(models.Bebida.nome)
+        .join(models.EstoqueItem, models.EstoqueItem.bebida_id == models.Bebida.id)
+        .filter(models.EstoqueItem.ativo == 1, models.EstoqueItem.quantidade < 1)
+        .all()
+    )
+    esgotados = {"P": [], "M": [], "G": []}
+    receitas = (
+        db.query(models.ConsumoIngrediente)
+        .join(models.EstoqueItem)
+        .filter(models.EstoqueItem.ativo == 1)
+        .all()
+    )
+    for r in receitas:
+        saldo = r.estoque_item.quantidade
+        for tamanho, qtd in (("P", r.qtd_p), ("M", r.qtd_m), ("G", r.qtd_g)):
+            if qtd > 0 and saldo + 0.0005 < qtd:
+                esgotados[tamanho].append(r.ingrediente.nome)
+    return schemas.DisponibilidadeOut(
+        bebidas_esgotadas=[b.nome for b in bebidas],
+        ingredientes_esgotados=esgotados,
+    )

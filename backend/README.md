@@ -57,7 +57,8 @@ Com o servidor rodando, acesse:
 | GET    | `/cardapio/pizzas`                    | não          | Lista pizzas (filtro opcional `?categoria=`) |
 | GET    | `/cardapio/bebidas`                   | não          | Lista bebidas                                |
 | GET    | `/cardapio/ingredientes`              | não          | Lista massas/molhos/coberturas               |
-| POST   | `/pedidos`                            | não          | Cria um pedido (cliente)                     |
+| GET    | `/cardapio/disponibilidade`           | não          | Bebidas e ingredientes esgotados (por tamanho) |
+| POST   | `/pedidos`                            | não          | Cria um pedido (409 se faltar estoque)       |
 | GET    | `/pedidos/{id}`                       | não          | Consulta status de um pedido                 |
 | POST   | `/auth/login`                         | não          | Login da cozinha/admin, retorna JWT          |
 | GET    | `/cozinha/pedidos`                    | sim          | Lista a fila de pedidos                      |
@@ -65,7 +66,7 @@ Com o servidor rodando, acesse:
 | WS     | `/ws/cozinha?token=<jwt>`             | sim          | Eventos em tempo real da cozinha             |
 | GET    | `/estoque/itens`                      | sim          | Itens com saldo e status (ok/baixo/zerado)   |
 | GET    | `/estoque/alertas`                    | sim          | Itens abaixo do mínimo                       |
-| POST   | `/estoque/itens`                      | sim          | Cadastra item (mínimo padrão 20 un / 10 kg)  |
+| POST   | `/estoque/itens`                      | sim          | Cadastra item (mínimo padrão 10 un / 10 kg)  |
 | PUT    | `/estoque/itens/{id}`                 | sim          | Edita nome, unidade, mínimo, bebida ligada   |
 | DELETE | `/estoque/itens/{id}`                 | dono         | Exclui item (mantém histórico)               |
 | POST   | `/estoque/itens/{id}/movimentar`      | sim          | Entrada, saída ou contagem                   |

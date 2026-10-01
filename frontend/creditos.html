@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Créditos das fotos — BRASA Pizzaria</title>
+<link rel="stylesheet" href="styles.css">
+<style>
+  .creditos { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 14px; margin-bottom: 56px; }
+  .credito { display: flex; gap: 12px; background: var(--mozzarella); border-radius: var(--radius-m); padding: 12px; box-shadow: var(--shadow-card); font-size: 13px; line-height: 1.45; min-width: 0; }
+  .credito img { width: 64px; height: 64px; border-radius: var(--radius-s); object-fit: cover; flex-shrink: 0; }
+  .credito div { min-width: 0; }
+  .credito strong { display: block; overflow-wrap: anywhere; }
+  .credito a { text-decoration: underline; }
+  .credito .meta { opacity: 0.7; overflow-wrap: anywhere; }
+</style>
+</head>
+<body>
+
+<header class="brasa-header">
+  <div class="brasa-logo">
+    <span class="mark">BRA<em>SA</em></span>
+    <span class="tagline">forno a lenha desde sempre</span>
+  </div>
+  <div class="header-actions">
+    <nav class="header-nav">
+      <a href="cardapio.html">Cardápio</a>
+      <a href="montar_pizza.html">Monte a sua</a>
+    </nav>
+    <a href="carrinho.html" class="cart-link">
+      Carrinho
+      <span class="cart-badge" data-cart-badge>0</span>
+    </a>
+  </div>
+</header>
+
+<main class="page">
+  <section class="hero" style="margin-bottom: 32px; padding-bottom: 28px;">
+    <p class="eyebrow">Fotos</p>
+    <h1>Créditos</h1>
+    <p>As fotos das pizzas próprias são do acervo da BRASA. As demais vêm do Wikimedia Commons,
+      sob licenças livres (domínio público ou Creative Commons), e foram recortadas e redimensionadas.</p>
+  </section>
+  <div class="creditos" id="creditos"></div>
+</main>
+
+<script src="cart.js"></script>
+<script>
+function escapeHTML(texto) {
+  const div = document.createElement('div');
+  div.textContent = texto == null ? '' : String(texto);
+  return div.innerHTML;
+}
+
+fetch('img/creditos.json')
+  .then(r => r.json())
+  .then(lista => {
+    document.getElementById('creditos').innerHTML = lista.map(c => `
+      <article class="credito">
+        <img src="${escapeHTML(c.arquivo)}" alt="" loading="lazy" width="64" height="64">
+        <div>
+          <strong>${escapeHTML(c.arquivo.replace('img/', ''))}</strong>
+          <span class="meta">Autor: ${escapeHTML(c.autor)}</span><br>
+          <span class="meta">Licença: ${c.licenca_url
+            ? `<a href="${escapeHTML(c.licenca_url)}" target="_blank" rel="noopener">${escapeHTML(c.licenca)}</a>`
+            : escapeHTML(c.licenca)}</span>
+          ${c.fonte ? `<br><a href="${escapeHTML(c.fonte)}" target="_blank" rel="noopener">Ver original</a>` : ''}
+        </div>
+      </article>`).join('');
+  })
+  .catch(() => {
+    document.getElementById('creditos').textContent = 'Não foi possível carregar a lista de créditos.';
+  });
+</script>
+
+</body>
+</html>

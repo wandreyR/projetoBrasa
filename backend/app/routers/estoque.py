@@ -153,6 +153,12 @@ async def movimentar_item(
     if dados.tipo == "entrada":
         delta = dados.quantidade
     elif dados.tipo == "saida":
+        if dados.quantidade > item.quantidade + 1e-9:
+            raise HTTPException(
+                status_code=422,
+                detail=f"Saída maior que o saldo ({item.quantidade:g} {item.unidade.value}). "
+                       "Se a contagem estiver errada, use Contagem.",
+            )
         delta = -dados.quantidade
     else:  # ajuste: a quantidade informada é a nova contagem
         delta = dados.quantidade - item.quantidade

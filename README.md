@@ -91,7 +91,7 @@ caso prefira não usar Docker no dia a dia.
 ## Estoque
 
 - Itens em **unidades** (bebidas, caixas) ou **kg** (farinha, queijos, molhos)
-- Alerta quando o saldo fica **abaixo do mínimo** — padrão **20 un** e **10 kg**, ajustável por item.
+- Alerta quando o saldo fica **abaixo do mínimo** — padrão **10 un** e **10 kg**, ajustável por item.
   A cozinha vê o aviso em tempo real no topo do Kanban
 - **Baixa automática:**
   - bebidas ligadas a um item de estoque saem a cada pedido (1 un por bebida vendida)
@@ -99,8 +99,24 @@ caso prefira não usar Docker no dia a dia.
     *Receita da pizza montada* (kg por tamanho P/M/G, editável na tela de estoque)
 - **Baixa manual:** os demais produtos em kg (pizzas do cardápio) são lançados pelos
   funcionários com *Entrada*, *Saída* ou *Contagem* (corrige o saldo após contar)
-- Pedido cancelado devolve ao estoque o que foi baixado automaticamente
+- **Venda sem estoque é proibida:** bebida zerada aparece como *Esgotado* no cardápio, ingrediente
+  sem saldo para o tamanho escolhido fica desabilitado no "Monte a sua", e a API recusa o pedido
+  (HTTP 409) se faltar qualquer item — as linhas do estoque são travadas durante o pedido para
+  dois clientes não comprarem a última unidade ao mesmo tempo
+- Saída manual maior que o saldo é recusada (use *Contagem* para corrigir o saldo)
+- Pedido cancelado devolve ao estoque o que foi baixado automaticamente; reabrir exige saldo
 - Todo movimento fica no histórico (quem fez, quando, qual pedido)
+
+## Fotos
+
+- `frontend/img/pizzas/<id>.jpg`, `frontend/img/bebidas/<id>.jpg` e `frontend/img/ingredientes/<id>.jpg`
+  (o `<id>` é o mesmo usado no cardápio / "Monte a sua"; ex.: `pizzas/margherita.jpg`)
+- Quatro Queijos, Calabresa, Frango com Catupiry e Portuguesa são fotos do acervo da pizzaria
+  (originais em `img/`); as demais vêm do Wikimedia Commons sob licenças livres
+- Os créditos (autor e licença, exigidos pelas licenças CC BY/BY-SA) ficam em
+  `frontend/img/creditos.json` e aparecem na página `creditos.html`
+- Para trocar uma foto: salve um JPG quadrado (~600px) com o mesmo nome, atualize o
+  `creditos.json` e rode `docker compose up --build -d frontend`
 
 ## Próximos passos
 - Conectar o cardápio e o "Monte sua pizza" às rotas reais do backend (hoje ainda

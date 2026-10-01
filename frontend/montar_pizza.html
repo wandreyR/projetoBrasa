@@ -104,6 +104,8 @@
     </div>
   </div>
 
+  <p class="creditos-link" style="margin-top:32px"><a href="creditos.html">Créditos das fotos</a></p>
+
 </main>
 
 
@@ -165,18 +167,63 @@ const state = {
   qtd: 1,
 };
 
+/* ---------- Estoque: ingredientes esgotados por tamanho ---------- */
+
+// { P: Set(nomes), M: ..., G: ... } vindo de GET /cardapio/disponibilidade
+let esgotadosPorTamanho = { P: new Set(), M: new Set(), G: new Set() };
+
+function estaEsgotado(opt) {
+  return esgotadosPorTamanho[state.size].has(opt.nome);
+}
+
+async function carregarDisponibilidade() {
+  try {
+    const resp = await fetch(`${API_URL}/cardapio/disponibilidade`);
+    if (!resp.ok) return;
+    const { ingredientes_esgotados: e } = await resp.json();
+    esgotadosPorTamanho = { P: new Set(e.P), M: new Set(e.M), G: new Set(e.G) };
+    ajustarSelecaoEsgotada();
+    renderAll();
+  } catch (e) { /* sem API: mostra tudo; a API recusa no fechamento se faltar */ }
+}
+
+// Tira da seleção o que acabou para o tamanho atual (ex.: trocou de M para G)
+function ajustarSelecaoEsgotada() {
+  const removidos = [];
+  INGREDIENTES.filter(i => state.ingredientes.has(i.id) && estaEsgotado(i)).forEach(i => {
+    state.ingredientes.delete(i.id);
+    removidos.push(i.nome);
+  });
+  [['massa', MASSAS], ['molho', MOLHOS]].forEach(([chave, lista]) => {
+    const atual = lista.find(o => o.id === state[chave]);
+    if (atual && estaEsgotado(atual)) {
+      const alternativa = lista.find(o => !estaEsgotado(o));
+      if (alternativa) {
+        state[chave] = alternativa.id;
+        removidos.push(atual.nome);
+      }
+    }
+  });
+  if (removidos.length) showToast(`Esgotado para o tamanho ${state.size}: ${removidos.join(', ')}`, 4000);
+}
+
 function renderChips(containerId, options, selectedId, onSelect, multi) {
   const el = document.getElementById(containerId);
   el.innerHTML = options.map(opt => {
     const isSelected = multi ? state.ingredientes.has(opt.id) : selectedId === opt.id;
+    const esgotado = estaEsgotado(opt);
+    const etiqueta = esgotado ? '<span class="add-price">esgotado</span>'
+      : opt.add > 0 ? `<span class="add-price">+${formatPrice(opt.add)}</span>` : '';
     return `
-      <button type="button" class="chip ${isSelected ? 'selected' : ''}" data-id="${opt.id}">
+      <button type="button" class="chip ${isSelected ? 'selected' : ''} ${esgotado ? 'esgotado' : ''}" data-id="${opt.id}"
+              ${esgotado ? 'disabled' : ''}>
+        <img class="chip-foto" src="img/ingredientes/${opt.id}.jpg" alt="" width="28" height="28" loading="lazy">
         ${opt.nome}
-        ${opt.add > 0 ? `<span class="add-price">+${formatPrice(opt.add)}</span>` : ''}
+        ${etiqueta}
       </button>
     `;
   }).join('');
-  el.querySelectorAll('.chip').forEach(chip => {
+  el.querySelectorAll('.chip:not([disabled])').forEach(chip => {
     chip.addEventListener('click', () => {
       onSelect(chip.dataset.id);
       renderAll();
@@ -218,7 +265,8 @@ function renderPreview() {
     const left = 50 + jitterR * Math.cos(angle);
     const dot = document.createElement('span');
     dot.className = 'topping';
-    dot.style.background = ing.cor;
+    dot.style.backgroundColor = ing.cor; // cor de fundo enquanto a foto carrega
+    dot.style.backgroundImage = `url(img/ingredientes/${ing.id}.jpg)`;
     dot.style.top = `${top}%`;
     dot.style.left = `${left}%`;
     preview.appendChild(dot);
@@ -243,6 +291,7 @@ function renderAll() {
 document.querySelectorAll('.size-option').forEach(btn => {
   btn.addEventListener('click', () => {
     state.size = btn.dataset.size;
+    ajustarSelecaoEsgotada();
     renderAll();
   });
 });
@@ -257,6 +306,13 @@ document.getElementById('qtyPlus').addEventListener('click', () => {
 });
 
 document.getElementById('addCustomBtn').addEventListener('click', () => {
+  const escolhidos = [MASSAS.find(m => m.id === state.massa), MOLHOS.find(m => m.id === state.molho),
+    ...INGREDIENTES.filter(i => state.ingredientes.has(i.id))];
+  const faltando = escolhidos.filter(estaEsgotado).map(i => i.nome);
+  if (faltando.length) {
+    showToast(`Esgotado: ${faltando.join(', ')}`, 4000);
+    return;
+  }
   const massaNome = MASSAS.find(m => m.id === state.massa).nome;
   const molhoNome = MOLHOS.find(m => m.id === state.molho).nome;
   const ingNomes = INGREDIENTES.filter(i => state.ingredientes.has(i.id)).map(i => i.nome);
@@ -280,6 +336,7 @@ document.getElementById('addCustomBtn').addEventListener('click', () => {
 });
 
 renderAll();
+carregarDisponibilidade();
 </script>
 
 </body>

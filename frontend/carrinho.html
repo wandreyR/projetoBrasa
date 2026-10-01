@@ -88,8 +88,18 @@ function tipoEntregaSelecionado() {
   return checkoutForm.querySelector('input[name="tipo_entrega"]:checked').value;
 }
 
+// Foto do item: pizza montada usa a foto da massa; bebida não tem tamanho
+function fotoDoItem(item) {
+  if (item.tipo === 'custom') {
+    const massa = (item.ingredientes && item.ingredientes[0]) || 'Tradicional';
+    const id = { Fina: 'fina', Integral: 'integral' }[massa] || 'tradicional';
+    return `img/ingredientes/${id}.jpg`;
+  }
+  return `img/${item.tamanho ? 'pizzas' : 'bebidas'}/${item.id}.jpg`;
+}
+
 function pizzaThumbSmallHTML(item) {
-  return `<div class="pizza-thumb thumb" style="background:#C1391F"></div>`;
+  return `<img class="foto-item" src="${fotoDoItem(item)}" alt="" width="56" height="56" loading="lazy">`;
 }
 
 function renderCart() {
