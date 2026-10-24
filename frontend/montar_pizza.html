@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Monte sua pizza — BRASA Pizzaria</title>
 <link rel="stylesheet" href="styles.css">
+<link rel="stylesheet" href="montagem.css">
 </head>
 <body>
 
@@ -30,21 +31,26 @@
   <section class="hero">
     <p class="eyebrow">Monte a sua</p>
     <h1>Sua pizza, <em>sua regra.</em></h1>
-    <p>Escolha cada etapa e acompanhe sua pizza sendo montada ao vivo. Nada de sabor pronto — aqui é 100% do seu jeito.</p>
+    <p>Escolha cada etapa e veja sua pizza sendo montada na hora: a massa abre, o molho espalha e cada ingrediente cai no lugar.</p>
   </section>
 
-  <div class="builder-grid">
+  <div class="builder-grid" id="builder" hidden>
 
     <div class="preview-col">
-      <div class="pizza-preview-wrap">
-        <div class="pizza-preview" id="pizzaPreview">
-          <div class="sauce" id="pizzaSauce"></div>
-          <!-- toppings injetados via JS -->
+      <div class="palco-pizza" id="palco">
+        <div class="pizza-montagem" id="pizzaMontagem" data-tamanho="M" data-massa="tradicional">
+          <div class="camada-massa"></div>
+          <div class="camada-molho"></div>
+          <div class="camada-pecas"></div>
         </div>
+      </div>
+      <p class="narracao" id="narracao" aria-live="polite"></p>
+      <div class="acoes-preview">
+        <button type="button" class="btn-replay" id="btnReplay">▶ Ver a montagem</button>
       </div>
       <div class="preview-price">
         <p class="label">Total da pizza</p>
-        <p class="value" id="previewPrice">R$ 28,00</p>
+        <p class="value" id="previewPrice">–</p>
       </div>
     </div>
 
@@ -53,23 +59,7 @@
       <div class="step">
         <p class="step-label">Passo 1</p>
         <h3>Escolha o tamanho</h3>
-        <div class="size-dial" id="sizeDial">
-          <button class="size-option" data-size="P">
-            <span class="ring"></span>
-            <span class="name">P</span>
-            <span class="meta">4 fatias · R$ 28</span>
-          </button>
-          <button class="size-option selected" data-size="M">
-            <span class="ring"></span>
-            <span class="name">M</span>
-            <span class="meta">6 fatias · R$ 38</span>
-          </button>
-          <button class="size-option" data-size="G">
-            <span class="ring"></span>
-            <span class="name">G</span>
-            <span class="meta">8 fatias · R$ 48</span>
-          </button>
-        </div>
+        <div class="size-dial" id="sizeDial"></div>
       </div>
 
       <div class="step">
@@ -87,7 +77,7 @@
       <div class="step">
         <p class="step-label">Passo 4</p>
         <h3>Escolha os ingredientes</h3>
-        <p class="step-dica">Quer mais? Toque de novo para dobrar a porção (até 3×). Use − para tirar.</p>
+        <p class="step-dica" id="dicaPorcoes">Quer mais? Toque de novo para dobrar a porção. Use − para tirar.</p>
         <div class="chip-row" id="ingredientesRow"></div>
       </div>
 
@@ -105,288 +95,289 @@
     </div>
   </div>
 
+  <div id="estadoCarga" class="carregando">Preparando a bancada…</div>
+
   <p class="creditos-link" style="margin-top:32px"><a href="creditos.html">Créditos das fotos</a></p>
 
 </main>
 
-
 <script src="cart.js"></script>
+<script src="montagem.js"></script>
 <script>
-const SIZES = {
-  P: { preco: 28, fatias: 4 },
-  M: { preco: 38, fatias: 6 },
-  G: { preco: 48, fatias: 8 },
-};
-
-const MASSAS = [
-  { id: 'tradicional', nome: 'Tradicional', add: 0 },
-  { id: 'fina', nome: 'Fina', add: 0 },
-  { id: 'integral', nome: 'Integral', add: 2 },
-];
-
-const MOLHOS = [
-  { id: 'tomate', nome: 'Molho de tomate', add: 0, corSauce: '#B7371F', corBase: '#E9C989' },
-  { id: 'branco', nome: 'Branco (alho e azeite)', add: 0, corSauce: '#EFE3C6', corBase: '#E9C989' },
-  { id: 'barbecue', nome: 'Barbecue', add: 2, corSauce: '#5A2E14', corBase: '#E9C989' },
-];
-
-const INGREDIENTES = [
-  { id: 'mussarela', nome: 'Mussarela', add: 3, cor: '#FFFBF3' },
-  { id: 'calabresa', nome: 'Calabresa', add: 3, cor: '#8B3A2B' },
-  { id: 'frango', nome: 'Frango', add: 3, cor: '#E8D9B5' },
-  { id: 'presunto', nome: 'Presunto', add: 3, cor: '#E8A6A0' },
-  { id: 'bacon', nome: 'Bacon', add: 4, cor: '#A85C3F' },
-  { id: 'champignon', nome: 'Champignon', add: 3, cor: '#D9C9A8' },
-  { id: 'cebola', nome: 'Cebola roxa', add: 2, cor: '#7A4B6B' },
-  { id: 'pimentao', nome: 'Pimentão', add: 2, cor: '#4C6444' },
-  { id: 'azeitona', nome: 'Azeitona', add: 2, cor: '#2B2B1E' },
-  { id: 'milho', nome: 'Milho', add: 2, cor: '#E8B923' },
-  { id: 'catupiry', nome: 'Catupiry', add: 4, cor: '#FFF6DC' },
-  { id: 'gorgonzola', nome: 'Gorgonzola', add: 4, cor: '#E9E2C9' },
-  { id: 'rucula', nome: 'Rúcula', add: 3, cor: '#4C6444' },
-  { id: 'tomate-seco', nome: 'Tomate seco', add: 3, cor: '#7A2E1E' },
-  { id: 'palmito', nome: 'Palmito', add: 3, cor: '#EDE4C8' },
-];
-
-// Posições em círculo para até 15 toppings (geradas em anel)
-function generateRingPositions(n, radiusPct) {
-  const positions = [];
-  for (let i = 0; i < n; i++) {
-    const angle = (i / n) * 2 * Math.PI - Math.PI / 2;
-    const top = 50 + radiusPct * Math.sin(angle);
-    const left = 50 + radiusPct * Math.cos(angle);
-    positions.push({ top: `${top}%`, left: `${left}%` });
-  }
-  return positions;
-}
+// Tamanhos, preços e ingredientes vêm do banco (GET /cardapio/montagem).
+// O preço mostrado aqui é só uma prévia: a API recalcula ao fechar o pedido.
+let DADOS = null;           // resposta de /cardapio/montagem
+let esgotadosPorTamanho = { P: new Set(), M: new Set(), G: new Set() };
 
 const state = {
   size: 'M',
-  massa: 'tradicional',
-  molho: 'tomate',
-  ingredientes: new Map([['mussarela', 1]]), // id do adicional → porções na pizza
+  massa: null,               // slug
+  molho: null,               // slug
+  porcoes: new Map(),        // slug da cobertura → porções
   qtd: 1,
 };
 
-/* ---------- Estoque: ingredientes esgotados por tamanho ---------- */
+const montagem = new MontagemPizza(document.getElementById('palco'), {
+  narrar: (texto) => { document.getElementById('narracao').textContent = texto; },
+});
 
-// { P: Set(nomes), M: ..., G: ... } vindo de GET /cardapio/disponibilidade
-let esgotadosPorTamanho = { P: new Set(), M: new Set(), G: new Set() };
+const porSlug = (lista, slug) => lista.find(i => i.slug === slug);
+const massaAtual = () => porSlug(DADOS.massas, state.massa);
+const molhoAtual = () => porSlug(DADOS.molhos, state.molho);
+const tamanhoAtual = () => DADOS.tamanhos.find(t => t.codigo === state.size);
+
+function escapeHTML(texto) {
+  const div = document.createElement('div');
+  div.textContent = texto == null ? '' : String(texto);
+  return div.innerHTML;
+}
+
+/* ---------- Carregamento ---------- */
+
+async function carregar() {
+  const carga = document.getElementById('estadoCarga');
+  try {
+    const [dados, disp] = await Promise.all([
+      apiPublica('/cardapio/montagem'),
+      apiPublica('/cardapio/disponibilidade').catch(() => null),
+    ]);
+    DADOS = dados;
+    if (disp) {
+      const e = disp.ingredientes_esgotados;
+      esgotadosPorTamanho = { P: new Set(e.P), M: new Set(e.M), G: new Set(e.G) };
+    }
+    state.size = (DADOS.tamanhos.find(t => t.codigo === 'M') || DADOS.tamanhos[0]).codigo;
+    state.massa = DADOS.massas[0].slug;
+    state.molho = DADOS.molhos[0].slug;
+    if (porSlug(DADOS.coberturas, 'mussarela')) state.porcoes.set('mussarela', 1);
+    document.getElementById('dicaPorcoes').textContent =
+      `Quer mais? Toque de novo para dobrar a porção (até ${DADOS.max_porcoes}×). Use − para tirar.`;
+    ajustarSelecaoEsgotada(false);
+
+    carga.hidden = true;
+    document.getElementById('builder').hidden = false;
+    renderTudo();
+    // primeira visita: mostra a montagem completa
+    montagem.reproduzir(estadoParaMontagem());
+  } catch (e) {
+    carga.innerHTML = `Não conseguimos carregar os ingredientes. <button type="button" class="btn btn-dark" id="tentarDeNovo">Tentar de novo</button>`;
+    document.getElementById('tentarDeNovo').addEventListener('click', carregar);
+  }
+}
+
+/* ---------- Esgotados (estoque) ---------- */
 
 function estaEsgotado(opt) {
-  return esgotadosPorTamanho[state.size].has(opt.nome);
+  return esgotadosPorTamanho[state.size] && esgotadosPorTamanho[state.size].has(opt.nome);
 }
 
-async function carregarDisponibilidade() {
-  try {
-    const resp = await fetch(`${API_URL}/cardapio/disponibilidade`);
-    if (!resp.ok) return;
-    const { ingredientes_esgotados: e } = await resp.json();
-    esgotadosPorTamanho = { P: new Set(e.P), M: new Set(e.M), G: new Set(e.G) };
-    ajustarSelecaoEsgotada();
-    renderAll();
-  } catch (e) { /* sem API: mostra tudo; a API recusa no fechamento se faltar */ }
-}
-
-// Tira da seleção o que acabou para o tamanho atual (ex.: trocou de M para G)
-function ajustarSelecaoEsgotada() {
+function ajustarSelecaoEsgotada(avisar = true) {
   const removidos = [];
-  INGREDIENTES.filter(i => state.ingredientes.has(i.id) && estaEsgotado(i)).forEach(i => {
-    state.ingredientes.delete(i.id);
+  DADOS.coberturas.filter(i => state.porcoes.has(i.slug) && estaEsgotado(i)).forEach(i => {
+    state.porcoes.delete(i.slug);
     removidos.push(i.nome);
   });
-  [['massa', MASSAS], ['molho', MOLHOS]].forEach(([chave, lista]) => {
-    const atual = lista.find(o => o.id === state[chave]);
+  [['massa', DADOS.massas], ['molho', DADOS.molhos]].forEach(([chave, lista]) => {
+    const atual = porSlug(lista, state[chave]);
     if (atual && estaEsgotado(atual)) {
       const alternativa = lista.find(o => !estaEsgotado(o));
       if (alternativa) {
-        state[chave] = alternativa.id;
+        state[chave] = alternativa.slug;
         removidos.push(atual.nome);
       }
     }
   });
-  if (removidos.length) showToast(`Esgotado para o tamanho ${state.size}: ${removidos.join(', ')}`, 4000);
+  if (removidos.length && avisar) showToast(`Esgotado para o tamanho ${state.size}: ${removidos.join(', ')}`, 4000);
 }
 
-function renderChips(containerId, options, selectedId, onSelect) {
-  const el = document.getElementById(containerId);
-  el.innerHTML = options.map(opt => {
-    const isSelected = selectedId === opt.id;
+/* ---------- Preço (prévia; a API recalcula) ---------- */
+
+function calcPrice() {
+  let total = tamanhoAtual().preco_base + massaAtual().preco_adicional + molhoAtual().preco_adicional;
+  state.porcoes.forEach((qtd, slug) => {
+    const ing = porSlug(DADOS.coberturas, slug);
+    if (ing) total += ing.preco_adicional * qtd;
+  });
+  return total;
+}
+
+/* ---------- Render das escolhas ---------- */
+
+function fotoIngrediente(opt) {
+  return `<img class="chip-foto" src="img/ingredientes/${opt.slug}.jpg" alt="" width="28" height="28" loading="lazy"
+               onerror="this.style.visibility='hidden'">`;
+}
+
+function renderTamanhos() {
+  document.getElementById('sizeDial').innerHTML = DADOS.tamanhos.map(t => `
+    <button type="button" class="size-option ${t.codigo === state.size ? 'selected' : ''}" data-size="${t.codigo}"
+            aria-pressed="${t.codigo === state.size}">
+      <span class="ring"></span>
+      <span class="name">${t.codigo}</span>
+      <span class="meta">${t.fatias} fatias · ${formatPrice(t.preco_base)}</span>
+    </button>`).join('');
+}
+
+function renderEscolhaUnica(containerId, opcoes, selecionado) {
+  document.getElementById(containerId).innerHTML = opcoes.map(opt => {
     const esgotado = estaEsgotado(opt);
     const etiqueta = esgotado ? '<span class="add-price">esgotado</span>'
-      : opt.add > 0 ? `<span class="add-price">+${formatPrice(opt.add)}</span>` : '';
+      : opt.preco_adicional > 0 ? `<span class="add-price">+${formatPrice(opt.preco_adicional)}</span>` : '';
     return `
-      <button type="button" class="chip ${isSelected ? 'selected' : ''} ${esgotado ? 'esgotado' : ''}" data-id="${opt.id}"
-              ${esgotado ? 'disabled' : ''}>
-        <img class="chip-foto" src="img/ingredientes/${opt.id}.jpg" alt="" width="28" height="28" loading="lazy">
-        ${opt.nome}
-        ${etiqueta}
-      </button>
-    `;
+      <button type="button" class="chip ${opt.slug === selecionado ? 'selected' : ''} ${esgotado ? 'esgotado' : ''}"
+              data-escolha="${opt.slug}" ${esgotado ? 'disabled' : ''} aria-pressed="${opt.slug === selecionado}">
+        ${fotoIngrediente(opt)} ${escapeHTML(opt.nome)} ${etiqueta}
+      </button>`;
   }).join('');
-  el.querySelectorAll('.chip:not([disabled])').forEach(chip => {
-    chip.addEventListener('click', () => {
-      onSelect(chip.dataset.id);
-      renderAll();
-    });
-  });
 }
-
-const MAX_PORCOES = 3; // porções do mesmo adicional por pizza
 
 function renderAdicionais() {
-  const el = document.getElementById('ingredientesRow');
-  el.innerHTML = INGREDIENTES.map(opt => {
-    const qtd = state.ingredientes.get(opt.id) || 0;
+  document.getElementById('ingredientesRow').innerHTML = DADOS.coberturas.map(opt => {
+    const qtd = state.porcoes.get(opt.slug) || 0;
     const esgotado = estaEsgotado(opt);
     const etiqueta = esgotado ? '<span class="add-price">esgotado</span>'
-      : `<span class="add-price">+${formatPrice(opt.add)}</span>`;
+      : `<span class="add-price">+${formatPrice(opt.preco_adicional)}</span>`;
     return `
       <div class="chip chip-adicional ${qtd ? 'selected' : ''} ${esgotado ? 'esgotado' : ''}">
-        <button type="button" class="chip-mais" data-mais="${opt.id}" ${esgotado ? 'disabled' : ''}
-                aria-label="Adicionar ${opt.nome}${qtd ? ` (${qtd} na pizza)` : ''}">
-          <img class="chip-foto" src="img/ingredientes/${opt.id}.jpg" alt="" width="28" height="28" loading="lazy">
-          ${opt.nome}
+        <button type="button" class="chip-mais" data-mais="${opt.slug}" ${esgotado ? 'disabled' : ''}
+                aria-label="Adicionar ${escapeHTML(opt.nome)}${qtd ? ` (${qtd} na pizza)` : ''}">
+          ${fotoIngrediente(opt)} ${escapeHTML(opt.nome)}
           ${qtd > 1 ? `<span class="chip-qtd">${qtd}×</span>` : ''}
           ${etiqueta}
         </button>
-        ${qtd ? `<button type="button" class="chip-menos" data-menos="${opt.id}" aria-label="Tirar uma porção de ${opt.nome}">−</button>` : ''}
+        ${qtd ? `<button type="button" class="chip-menos" data-menos="${opt.slug}" aria-label="Tirar uma porção de ${escapeHTML(opt.nome)}">−</button>` : ''}
       </div>`;
   }).join('');
 }
+
+// Lista com uma entrada por porção, no formato que a montagem e o pedido usam
+function porcoesEscolhidas() {
+  return DADOS.coberturas.flatMap(i =>
+    Array.from({ length: state.porcoes.get(i.slug) || 0 }, (_, k) => ({ slug: i.slug, nome: i.nome, cor: i.cor_hex, porcao: k + 1 }))
+  );
+}
+
+function estadoParaMontagem() {
+  return { massa: massaAtual(), molho: molhoAtual(), porcoes: porcoesEscolhidas(), tamanhoNome: tamanhoAtual().nome };
+}
+
+function renderEscolhas() {
+  renderTamanhos();
+  renderEscolhaUnica('massaRow', DADOS.massas, state.massa);
+  renderEscolhaUnica('molhoRow', DADOS.molhos, state.molho);
+  renderAdicionais();
+  document.getElementById('previewPrice').textContent = formatPrice(calcPrice() * state.qtd);
+  document.getElementById('qtyVal').textContent = state.qtd;
+}
+
+// Desenha a pizza sem animação (estado inicial)
+function renderTudo() {
+  renderEscolhas();
+  montagem.setTamanho(state.size);
+  montagem.setMassa(state.massa, massaAtual().nome, massaAtual().cor_hex, false);
+  montagem.setMolho(state.molho, molhoAtual().nome, molhoAtual().cor_hex, false);
+  montagem.setCoberturas(porcoesEscolhidas(), false);
+}
+
+/* ---------- Interações (cada uma anima só o que mudou) ---------- */
+
+document.getElementById('sizeDial').addEventListener('click', (event) => {
+  const btn = event.target.closest('[data-size]');
+  if (!btn || btn.dataset.size === state.size) return;
+  state.size = btn.dataset.size;
+  ajustarSelecaoEsgotada();
+  montagem.setTamanho(state.size);
+  montagem.setCoberturas(porcoesEscolhidas());
+  document.getElementById('narracao').textContent = `Pizza ${tamanhoAtual().nome.toLowerCase()}: ${tamanhoAtual().fatias} fatias.`;
+  renderEscolhas();
+});
+
+document.getElementById('massaRow').addEventListener('click', (event) => {
+  const btn = event.target.closest('[data-escolha]');
+  if (!btn || btn.disabled || btn.dataset.escolha === state.massa) return;
+  state.massa = btn.dataset.escolha;
+  montagem.setMassa(state.massa, massaAtual().nome, massaAtual().cor_hex);
+  renderEscolhas();
+});
+
+document.getElementById('molhoRow').addEventListener('click', (event) => {
+  const btn = event.target.closest('[data-escolha]');
+  if (!btn || btn.disabled || btn.dataset.escolha === state.molho) return;
+  state.molho = btn.dataset.escolha;
+  montagem.setMolho(state.molho, molhoAtual().nome, molhoAtual().cor_hex);
+  renderEscolhas();
+});
 
 document.getElementById('ingredientesRow').addEventListener('click', (event) => {
   const mais = event.target.closest('[data-mais]');
   const menos = event.target.closest('[data-menos]');
   if (mais && !mais.disabled) {
-    const id = mais.dataset.mais;
-    const qtd = state.ingredientes.get(id) || 0;
-    if (qtd >= MAX_PORCOES) {
-      showToast(`Máximo de ${MAX_PORCOES} porções do mesmo adicional`);
+    const slug = mais.dataset.mais;
+    const qtd = state.porcoes.get(slug) || 0;
+    if (qtd >= DADOS.max_porcoes) {
+      showToast(`Máximo de ${DADOS.max_porcoes} porções do mesmo adicional`);
       return;
     }
-    state.ingredientes.set(id, qtd + 1);
+    state.porcoes.set(slug, qtd + 1);
   } else if (menos) {
-    const id = menos.dataset.menos;
-    const qtd = (state.ingredientes.get(id) || 0) - 1;
-    if (qtd > 0) state.ingredientes.set(id, qtd);
-    else state.ingredientes.delete(id);
+    const slug = menos.dataset.menos;
+    const qtd = (state.porcoes.get(slug) || 0) - 1;
+    if (qtd > 0) state.porcoes.set(slug, qtd);
+    else state.porcoes.delete(slug);
+    document.getElementById('narracao').textContent = `Tirando ${porSlug(DADOS.coberturas, slug).nome.toLowerCase()}…`;
   } else {
     return;
   }
-  renderAll();
+  montagem.setCoberturas(porcoesEscolhidas());
+  renderEscolhas();
 });
 
-// Lista com um item por porção: ['Bacon', 'Bacon', 'Milho'] (usada no preview e no pedido)
-function porcoesEscolhidas() {
-  return INGREDIENTES.flatMap(i => Array(state.ingredientes.get(i.id) || 0).fill(i));
-}
-
-function renderSizeDial() {
-  document.querySelectorAll('.size-option').forEach(btn => {
-    btn.classList.toggle('selected', btn.dataset.size === state.size);
-  });
-}
-
-function calcPrice() {
-  const base = SIZES[state.size].preco;
-  const massaAdd = MASSAS.find(m => m.id === state.massa).add;
-  const molhoAdd = MOLHOS.find(m => m.id === state.molho).add;
-  let ingAdd = 0;
-  state.ingredientes.forEach((qtd, id) => {
-    const ing = INGREDIENTES.find(i => i.id === id);
-    if (ing) ingAdd += ing.add * qtd;
-  });
-  return base + massaAdd + molhoAdd + ingAdd;
-}
-
-function renderPreview() {
-  const molho = MOLHOS.find(m => m.id === state.molho);
-  document.getElementById('pizzaSauce').style.background = molho.corSauce;
-
-  const preview = document.getElementById('pizzaPreview');
-  preview.querySelectorAll('.topping').forEach(t => t.remove());
-
-  const selected = porcoesEscolhidas();
-  const positions = generateRingPositions(Math.max(selected.length, 1), 28);
-  selected.forEach((ing, i) => {
-    const jitterR = 22 + (i % 3) * 6; // pequenas camadas de raio para não empilhar tudo igual
-    const angle = (i / selected.length) * 2 * Math.PI - Math.PI / 2 + (i * 0.35);
-    const top = 50 + jitterR * Math.sin(angle);
-    const left = 50 + jitterR * Math.cos(angle);
-    const dot = document.createElement('span');
-    dot.className = 'topping';
-    dot.style.backgroundColor = ing.cor; // cor de fundo enquanto a foto carrega
-    dot.style.backgroundImage = `url(img/ingredientes/${ing.id}.jpg)`;
-    dot.style.top = `${top}%`;
-    dot.style.left = `${left}%`;
-    preview.appendChild(dot);
-    requestAnimationFrame(() => dot.classList.add('on'));
-  });
-
-  document.getElementById('previewPrice').textContent = formatPrice(calcPrice() * state.qtd);
-}
-
-function renderAll() {
-  renderSizeDial();
-  renderChips('massaRow', MASSAS, state.massa, id => (state.massa = id));
-  renderChips('molhoRow', MOLHOS, state.molho, id => (state.molho = id));
-  renderAdicionais();
-  renderPreview();
-  document.getElementById('qtyVal').textContent = state.qtd;
-}
-
-document.querySelectorAll('.size-option').forEach(btn => {
-  btn.addEventListener('click', () => {
-    state.size = btn.dataset.size;
-    ajustarSelecaoEsgotada();
-    renderAll();
-  });
+document.getElementById('btnReplay').addEventListener('click', async (event) => {
+  const btn = event.currentTarget;
+  btn.disabled = true;
+  await montagem.reproduzir(estadoParaMontagem());
+  btn.disabled = false;
 });
 
 document.getElementById('qtyMinus').addEventListener('click', () => {
   state.qtd = Math.max(1, state.qtd - 1);
-  renderAll();
+  renderEscolhas();
 });
 document.getElementById('qtyPlus').addEventListener('click', () => {
   state.qtd += 1;
-  renderAll();
+  renderEscolhas();
 });
 
-document.getElementById('addCustomBtn').addEventListener('click', () => {
-  const escolhidos = [MASSAS.find(m => m.id === state.massa), MOLHOS.find(m => m.id === state.molho),
-    ...INGREDIENTES.filter(i => state.ingredientes.has(i.id))];
+document.getElementById('addCustomBtn').addEventListener('click', async () => {
+  const escolhidos = [massaAtual(), molhoAtual(), ...DADOS.coberturas.filter(i => state.porcoes.has(i.slug))];
   const faltando = escolhidos.filter(estaEsgotado).map(i => i.nome);
   if (faltando.length) {
     showToast(`Esgotado: ${faltando.join(', ')}`, 4000);
     return;
   }
-  const massaNome = MASSAS.find(m => m.id === state.massa).nome;
-  const molhoNome = MOLHOS.find(m => m.id === state.molho).nome;
-  const ingNomes = porcoesEscolhidas().map(i => i.nome);
-  const ingTexto = INGREDIENTES.filter(i => state.ingredientes.has(i.id))
-    .map(i => (state.ingredientes.get(i.id) > 1 ? `${i.nome} (${state.ingredientes.get(i.id)}×)` : i.nome));
-  const precoUnit = calcPrice();
+  const textos = DADOS.coberturas.filter(i => state.porcoes.has(i.slug))
+    .map(i => (state.porcoes.get(i.slug) > 1 ? `${i.nome} (${state.porcoes.get(i.slug)}×)` : i.nome));
 
   addToCart({
     id: 'custom',
     tipo: 'custom',
     nome: 'Pizza montada',
     tamanho: state.size,
-    precoUnit,
+    precoUnit: calcPrice(), // prévia para o carrinho; a API recalcula
     qtd: state.qtd,
-    detalhes: `${massaNome} · ${molhoNome} · ${ingTexto.join(', ') || 'sem ingredientes extras'}`,
-    ingredientes: [massaNome, molhoNome, ...ingNomes], // usado pela API para baixar o estoque (kg)
+    detalhes: `${massaAtual().nome} · ${molhoAtual().nome} · ${textos.join(', ') || 'sem ingredientes extras'}`,
+    ingredientes: [massaAtual().nome, molhoAtual().nome, ...porcoesEscolhidas().map(p => p.nome)],
     customId: `custom-${Date.now()}`,
   });
 
-  showToast('Sua pizza foi adicionada ao carrinho');
+  showToast('Sua pizza foi para o forno e para o carrinho! 🍕');
   state.qtd = 1;
-  renderAll();
+  renderEscolhas();
+  await montagem.assar();
 });
 
-renderAll();
-carregarDisponibilidade();
+carregar();
+carregarStatusLoja();
 </script>
 
 </body>

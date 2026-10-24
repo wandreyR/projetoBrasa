@@ -19,6 +19,7 @@
       <a href="cozinha.html">Cozinha</a>
       <a href="estoque.html">Estoque</a>
       <a href="gerencial.html" class="active">Gerencial</a>
+      <a href="configuracoes.html">Configurações</a>
     </nav>
     <div class="usuario-box" data-usuario></div>
   </div>
@@ -86,6 +87,28 @@
         </div>
       </div>
       <div class="tabela-wrap" id="despesasCategoria"></div>
+    </section>
+  </div>
+
+  <div class="grid-2" style="margin-top:20px;">
+    <section class="painel">
+      <div class="painel-head">
+        <div>
+          <h2>Formas de pagamento</h2>
+          <p class="sub" id="aReceber">Pedidos não cancelados no período</p>
+        </div>
+      </div>
+      <div class="tabela-wrap" id="porPagamento"></div>
+    </section>
+
+    <section class="painel">
+      <div class="painel-head">
+        <div>
+          <h2>Entregas por entregador</h2>
+          <p class="sub">Pedidos entregues e taxas de entrega — base para acertar com os motoboys</p>
+        </div>
+      </div>
+      <div class="tabela-wrap" id="porEntregador"></div>
     </section>
   </div>
 
@@ -208,6 +231,7 @@ async function carregarTudo() {
     renderTabelaDias();
     renderTopItens();
     renderDespesasCategoria();
+    renderPagamentosEntregas();
     renderListaDespesas();
   } catch (e) {
     if (!(e instanceof ErroSessao)) showToast(e.message, 5000);
@@ -427,6 +451,25 @@ function renderDespesasCategoria() {
   document.getElementById('despesasCategoria').innerHTML = cats.length
     ? tabelaComBarra(cats.map(c => ({ nome: CATEGORIAS[c.categoria] || c.categoria, valor: c.total })), '--serie-despesas', ['Categoria', 'Total', ''])
     : `<p class="tabela-vazia">Nenhuma despesa lançada no período.</p>`;
+}
+
+const FORMAS = { pix: 'Pix', credito: 'Cartão de crédito', debito: 'Cartão de débito', dinheiro: 'Dinheiro', nao_informado: 'Não informado (pedidos antigos)' };
+
+function renderPagamentosEntregas() {
+  const r = estado.resumo;
+  document.getElementById('aReceber').innerHTML = r.a_receber > 0
+    ? `<b>${formatPrice(r.a_receber)}</b> ainda não marcados como pagos na cozinha`
+    : 'Todos os pedidos do período estão marcados como pagos';
+  document.getElementById('porPagamento').innerHTML = r.por_pagamento.length
+    ? tabelaComBarra(r.por_pagamento.map(x => ({ nome: FORMAS[x.forma] || x.forma, extra: x.pedidos, valor: x.total })), '--serie-faturamento', ['Forma', 'Pedidos', 'Total', ''])
+    : `<p class="tabela-vazia">Nenhum pedido no período.</p>`;
+  document.getElementById('porEntregador').innerHTML = r.por_entregador.length ? `
+    <table class="tabela">
+      <thead><tr><th>Entregador</th><th class="num">Entregas</th><th class="num">Taxas cobradas</th></tr></thead>
+      <tbody>${r.por_entregador.map(e => `
+        <tr><td>${escapeHTML(e.nome)}</td><td class="num">${e.entregas}</td><td class="num">${formatPrice(e.taxas)}</td></tr>`).join('')}
+      </tbody>
+    </table>` : `<p class="tabela-vazia">Nenhuma entrega concluída no período.</p>`;
 }
 
 /* ---------- Despesas: lista e formulário ---------- */

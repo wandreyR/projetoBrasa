@@ -56,6 +56,24 @@ services:
     networks:
       - brasa_net
 
+  backup:
+    build: ./backup
+    container_name: brasa_backup
+    restart: unless-stopped
+    environment:
+      DB_PASSWORD: ${DB_PASSWORD:-brasa_local_troque_me}
+      DB_NAME: ${DB_NAME:-brasa_pizzaria_db}
+      TZ: America/Sao_Paulo
+      HORA_BACKUP: "04:00"   # um backup por dia neste horário (e um ao subir o container)
+      DIAS_RETENCAO: 14      # apaga backups com mais de 14 dias
+    volumes:
+      - ./backups:/backups   # pasta "backups" do projeto (fora do Git) — copie para a nuvem/HD externo
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - brasa_net
+
 networks:
   brasa_net:
     driver: bridge

@@ -1,0 +1,375 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Configurações — BRASA Pizzaria</title>
+<link rel="stylesheet" href="styles.css">
+<link rel="stylesheet" href="staff.css">
+</head>
+<body>
+
+<header class="brasa-header">
+  <div class="brasa-logo">
+    <span class="mark">BRA<em>SA</em></span>
+    <span class="tagline">área da equipe</span>
+  </div>
+  <div class="header-actions">
+    <nav class="header-nav">
+      <a href="cozinha.html">Cozinha</a>
+      <a href="estoque.html">Estoque</a>
+      <a href="gerencial.html">Gerencial</a>
+      <a href="configuracoes.html" class="active">Configurações</a>
+    </nav>
+    <div class="usuario-box" data-usuario></div>
+  </div>
+</header>
+
+<main class="staff-page" id="conteudo" hidden>
+
+  <div class="staff-title">
+    <div>
+      <p class="eyebrow">Visão do dono</p>
+      <h1>Configurações</h1>
+    </div>
+  </div>
+
+  <div class="tabs abas-config" role="tablist" aria-label="Seções">
+    <button type="button" class="tab active" role="tab" data-aba="cardapio" aria-selected="true">Cardápio</button>
+    <button type="button" class="tab" role="tab" data-aba="montagem" aria-selected="false">Monte a sua</button>
+    <button type="button" class="tab" role="tab" data-aba="bairros" aria-selected="false">Bairros e taxas</button>
+    <button type="button" class="tab" role="tab" data-aba="entregadores" aria-selected="false">Entregadores</button>
+    <button type="button" class="tab" role="tab" data-aba="horarios" aria-selected="false">Horário</button>
+  </div>
+
+  <!-- Cardápio -->
+  <section class="aba" data-painel="cardapio">
+    <div class="painel">
+      <div class="painel-head"><div><h2>Pizzas</h2><p class="sub">Preços por tamanho. Desmarque "No cardápio" para esconder do site sem apagar.</p></div></div>
+      <div class="tabela-wrap" id="tabPizzas"></div>
+    </div>
+    <div class="painel">
+      <div class="painel-head"><div><h2>Bebidas</h2><p class="sub">Para baixar estoque automaticamente, ligue a bebida a um item na tela de Estoque.</p></div></div>
+      <div class="tabela-wrap" id="tabBebidas"></div>
+    </div>
+    <p class="sub">Foto do produto: salve <code>frontend/img/pizzas/&lt;identificador&gt;.jpg</code> (ou <code>img/bebidas/</code>) e atualize o site. Sem foto, o card aparece com o fundo da marca.</p>
+  </section>
+
+  <!-- Monte a sua -->
+  <section class="aba" data-painel="montagem" hidden>
+    <div class="painel">
+      <div class="painel-head"><div><h2>Tamanhos</h2><p class="sub">Preço base da pizza montada, antes da massa, do molho e dos adicionais.</p></div></div>
+      <div class="tabela-wrap" id="tabTamanhos"></div>
+    </div>
+    <div class="painel">
+      <div class="painel-head"><div><h2>Massas, molhos e adicionais</h2><p class="sub">Valor somado ao preço base (por porção, nos adicionais).</p></div></div>
+      <div class="tabela-wrap" id="tabIngredientes"></div>
+    </div>
+  </section>
+
+  <!-- Bairros -->
+  <section class="aba" data-painel="bairros" hidden>
+    <div class="painel">
+      <div class="painel-head"><div><h2>Bairros atendidos</h2><p class="sub">O cliente escolhe o bairro no carrinho e a taxa entra no total.</p></div></div>
+      <div class="tabela-wrap" id="tabBairros"></div>
+    </div>
+  </section>
+
+  <!-- Entregadores -->
+  <section class="aba" data-painel="entregadores" hidden>
+    <div class="painel">
+      <div class="painel-head"><div><h2>Entregadores</h2><p class="sub">Aparecem para a cozinha escolher quando o pedido sai para entrega. O Gerencial mostra quantas entregas cada um fez.</p></div></div>
+      <div class="tabela-wrap" id="tabEntregadores"></div>
+    </div>
+  </section>
+
+  <!-- Horários -->
+  <section class="aba" data-painel="horarios" hidden>
+    <div class="painel">
+      <div class="painel-head">
+        <div><h2>Horário de funcionamento</h2><p class="sub">Fora do horário o site avisa que está fechado e não aceita pedidos. Se fechar depois da meia-noite (ex.: 18:00 às 01:00), use o horário normalmente.</p></div>
+        <span class="selo" id="statusLoja" data-status="ok">–</span>
+      </div>
+      <div class="tabela-wrap" id="tabHorarios"></div>
+      <div style="margin-top:14px; display:flex; justify-content:flex-end;">
+        <button type="button" class="btn btn-primary" id="salvarHorarios">Salvar horários</button>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<script src="staff.js"></script>
+<script>
+const CATEGORIAS = { tradicionais: 'Tradicional', especiais: 'Especial', doces: 'Doce' };
+const TIPOS_ING = { massa: 'Massa', molho: 'Molho', topping: 'Adicional' };
+const DIAS = ['Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado', 'Domingo'];
+const C = '/gerencial/config';
+
+const num = (v) => Number(String(v).replace(',', '.'));
+const linha = (btn) => btn.closest('tr');
+const campo = (tr, nome) => tr.querySelector(`[name="${nome}"]`);
+
+async function salvar(btn, caminho, metodo, corpo, depois) {
+  btn.disabled = true;
+  try {
+    await api(caminho, { method: metodo, body: corpo });
+    showToast('Salvo');
+    if (depois) await depois();
+  } catch (e) {
+    if (!(e instanceof ErroSessao)) showToast(e.message, 5000);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+/* ---------- Abas ---------- */
+
+document.querySelectorAll('[data-aba]').forEach(aba => aba.addEventListener('click', () => {
+  document.querySelectorAll('[data-aba]').forEach(a => {
+    a.classList.toggle('active', a === aba);
+    a.setAttribute('aria-selected', String(a === aba));
+  });
+  document.querySelectorAll('[data-painel]').forEach(p => (p.hidden = p.dataset.painel !== aba.dataset.aba));
+}));
+
+/* ---------- Cardápio ---------- */
+
+function inputPreco(nome, valor) {
+  return `<input type="number" name="${nome}" value="${valor}" min="0" step="0.5" inputmode="decimal" aria-label="${nome}">`;
+}
+function checkAtivo(valor) {
+  return `<label class="check"><input type="checkbox" name="ativo" ${valor ? 'checked' : ''}> No cardápio</label>`;
+}
+
+async function carregarPizzas() {
+  const pizzas = await api(`${C}/pizzas`);
+  const opcoesCat = (sel) => Object.entries(CATEGORIAS).map(([v, l]) => `<option value="${v}" ${v === sel ? 'selected' : ''}>${l}</option>`).join('');
+  const linhaPizza = (p) => `
+    <tr data-id="${p.id || ''}">
+      <td><input type="text" name="nome" value="${escapeHTML(p.nome || '')}" placeholder="Nome" aria-label="Nome"></td>
+      <td><input type="text" name="slug" value="${escapeHTML(p.slug || '')}" placeholder="ex.: nordestina" aria-label="Identificador" ${p.id ? 'readonly title="Identificador usado na foto e nos pedidos"' : ''}></td>
+      <td><select name="categoria" aria-label="Categoria">${opcoesCat(p.categoria || 'tradicionais')}</select></td>
+      <td><input type="text" name="descricao" value="${escapeHTML(p.descricao || '')}" placeholder="Ingredientes" aria-label="Descrição"></td>
+      <td>${inputPreco('preco_p', p.preco_p ?? '')}</td>
+      <td>${inputPreco('preco_m', p.preco_m ?? '')}</td>
+      <td>${inputPreco('preco_g', p.preco_g ?? '')}</td>
+      <td>${checkAtivo(p.id ? p.ativo : 1)}</td>
+      <td><button type="button" class="btn-mini" data-salvar-pizza>${p.id ? 'Salvar' : '+ Adicionar'}</button></td>
+    </tr>`;
+  document.getElementById('tabPizzas').innerHTML = `
+    <table class="tabela tabela-edicao">
+      <thead><tr><th>Nome</th><th>Identificador</th><th>Categoria</th><th>Descrição</th><th>P</th><th>M</th><th>G</th><th></th><th></th></tr></thead>
+      <tbody>${pizzas.map(linhaPizza).join('')}${linhaPizza({})}</tbody>
+    </table>`;
+}
+
+document.getElementById('tabPizzas').addEventListener('click', (e) => {
+  const btn = e.target.closest('[data-salvar-pizza]');
+  if (!btn) return;
+  const tr = linha(btn);
+  const corpo = {
+    nome: campo(tr, 'nome').value.trim(), slug: campo(tr, 'slug').value.trim().toLowerCase(),
+    categoria: campo(tr, 'categoria').value, descricao: campo(tr, 'descricao').value.trim(),
+    preco_p: num(campo(tr, 'preco_p').value), preco_m: num(campo(tr, 'preco_m').value), preco_g: num(campo(tr, 'preco_g').value),
+    ativo: campo(tr, 'ativo').checked ? 1 : 0,
+  };
+  const id = tr.dataset.id;
+  salvar(btn, id ? `${C}/pizzas/${id}` : `${C}/pizzas`, id ? 'PUT' : 'POST', corpo, id ? null : carregarPizzas);
+});
+
+async function carregarBebidas() {
+  const bebidas = await api(`${C}/bebidas`);
+  const linhaBebida = (b) => `
+    <tr data-id="${b.id || ''}">
+      <td><input type="text" name="nome" value="${escapeHTML(b.nome || '')}" placeholder="Nome" aria-label="Nome"></td>
+      <td><input type="text" name="slug" value="${escapeHTML(b.slug || '')}" placeholder="ex.: cerveja" aria-label="Identificador" ${b.id ? 'readonly' : ''}></td>
+      <td><input type="text" name="descricao" value="${escapeHTML(b.descricao || '')}" placeholder="Descrição" aria-label="Descrição"></td>
+      <td>${inputPreco('preco', b.preco ?? '')}</td>
+      <td>${checkAtivo(b.id ? b.ativo : 1)}</td>
+      <td><button type="button" class="btn-mini" data-salvar-bebida>${b.id ? 'Salvar' : '+ Adicionar'}</button></td>
+    </tr>`;
+  document.getElementById('tabBebidas').innerHTML = `
+    <table class="tabela tabela-edicao">
+      <thead><tr><th>Nome</th><th>Identificador</th><th>Descrição</th><th>Preço</th><th></th><th></th></tr></thead>
+      <tbody>${bebidas.map(linhaBebida).join('')}${linhaBebida({})}</tbody>
+    </table>`;
+}
+
+document.getElementById('tabBebidas').addEventListener('click', (e) => {
+  const btn = e.target.closest('[data-salvar-bebida]');
+  if (!btn) return;
+  const tr = linha(btn);
+  const corpo = {
+    nome: campo(tr, 'nome').value.trim(), slug: campo(tr, 'slug').value.trim().toLowerCase(),
+    descricao: campo(tr, 'descricao').value.trim(), preco: num(campo(tr, 'preco').value),
+    ativo: campo(tr, 'ativo').checked ? 1 : 0,
+  };
+  const id = tr.dataset.id;
+  salvar(btn, id ? `${C}/bebidas/${id}` : `${C}/bebidas`, id ? 'PUT' : 'POST', corpo, id ? null : carregarBebidas);
+});
+
+/* ---------- Monte a sua ---------- */
+
+async function carregarMontagem() {
+  const [tamanhos, ingredientes] = await Promise.all([api(`${C}/tamanhos`), api(`${C}/ingredientes`)]);
+  document.getElementById('tabTamanhos').innerHTML = `
+    <table class="tabela tabela-edicao">
+      <thead><tr><th>Tamanho</th><th>Fatias</th><th>Preço base</th><th></th></tr></thead>
+      <tbody>${tamanhos.map(t => `
+        <tr data-codigo="${t.codigo}">
+          <td><b>${t.codigo}</b> — ${escapeHTML(t.nome)}</td>
+          <td><input type="number" name="fatias" value="${t.fatias}" min="1" max="24" aria-label="Fatias"></td>
+          <td>${inputPreco('preco_base', t.preco_base)}</td>
+          <td><button type="button" class="btn-mini" data-salvar-tamanho>Salvar</button></td>
+        </tr>`).join('')}</tbody>
+    </table>`;
+  document.getElementById('tabIngredientes').innerHTML = `
+    <table class="tabela tabela-edicao">
+      <thead><tr><th>Ingrediente</th><th>Tipo</th><th>Valor adicional</th><th></th><th></th></tr></thead>
+      <tbody>${ingredientes.map(i => `
+        <tr data-id="${i.id}">
+          <td>${escapeHTML(i.nome)}</td>
+          <td>${TIPOS_ING[i.tipo] || i.tipo}</td>
+          <td>${inputPreco('preco_adicional', i.preco_adicional)}</td>
+          <td>${checkAtivo(i.ativo)}</td>
+          <td><button type="button" class="btn-mini" data-salvar-ingrediente>Salvar</button></td>
+        </tr>`).join('')}</tbody>
+    </table>`;
+}
+
+document.getElementById('tabTamanhos').addEventListener('click', (e) => {
+  const btn = e.target.closest('[data-salvar-tamanho]');
+  if (!btn) return;
+  const tr = linha(btn);
+  salvar(btn, `${C}/tamanhos/${tr.dataset.codigo}`, 'PUT',
+    { fatias: Number(campo(tr, 'fatias').value), preco_base: num(campo(tr, 'preco_base').value) });
+});
+
+document.getElementById('tabIngredientes').addEventListener('click', (e) => {
+  const btn = e.target.closest('[data-salvar-ingrediente]');
+  if (!btn) return;
+  const tr = linha(btn);
+  salvar(btn, `${C}/ingredientes/${tr.dataset.id}`, 'PUT',
+    { preco_adicional: num(campo(tr, 'preco_adicional').value), ativo: campo(tr, 'ativo').checked ? 1 : 0 });
+});
+
+/* ---------- Bairros ---------- */
+
+async function carregarBairros() {
+  const bairros = await api(`${C}/bairros`);
+  const linhaBairro = (b) => `
+    <tr data-id="${b.id || ''}">
+      <td><input type="text" name="nome" value="${escapeHTML(b.nome || '')}" placeholder="Nome do bairro" aria-label="Bairro"></td>
+      <td>${inputPreco('taxa', b.taxa ?? '')}</td>
+      <td><label class="check"><input type="checkbox" name="ativo" ${b.id ? (b.ativo ? 'checked' : '') : 'checked'}> Atende</label></td>
+      <td><button type="button" class="btn-mini" data-salvar-bairro>${b.id ? 'Salvar' : '+ Adicionar'}</button></td>
+    </tr>`;
+  document.getElementById('tabBairros').innerHTML = `
+    <table class="tabela tabela-edicao">
+      <thead><tr><th>Bairro</th><th>Taxa de entrega</th><th></th><th></th></tr></thead>
+      <tbody>${bairros.map(linhaBairro).join('')}${linhaBairro({})}</tbody>
+    </table>`;
+}
+
+document.getElementById('tabBairros').addEventListener('click', (e) => {
+  const btn = e.target.closest('[data-salvar-bairro]');
+  if (!btn) return;
+  const tr = linha(btn);
+  const corpo = { nome: campo(tr, 'nome').value.trim(), taxa: num(campo(tr, 'taxa').value || 0), ativo: campo(tr, 'ativo').checked ? 1 : 0 };
+  const id = tr.dataset.id;
+  salvar(btn, id ? `${C}/bairros/${id}` : `${C}/bairros`, id ? 'PUT' : 'POST', corpo, id ? null : carregarBairros);
+});
+
+/* ---------- Entregadores ---------- */
+
+async function carregarEntregadores() {
+  const lista = await api(`${C}/entregadores`);
+  const linhaEnt = (x) => `
+    <tr data-id="${x.id || ''}">
+      <td><input type="text" name="nome" value="${escapeHTML(x.nome || '')}" placeholder="Nome" aria-label="Nome"></td>
+      <td><input type="tel" name="telefone" value="${escapeHTML(x.telefone || '')}" placeholder="(62) 99999-0000" aria-label="Telefone"></td>
+      <td><label class="check"><input type="checkbox" name="ativo" ${x.id ? (x.ativo ? 'checked' : '') : 'checked'}> Ativo</label></td>
+      <td><button type="button" class="btn-mini" data-salvar-entregador>${x.id ? 'Salvar' : '+ Adicionar'}</button></td>
+    </tr>`;
+  document.getElementById('tabEntregadores').innerHTML = `
+    <table class="tabela tabela-edicao">
+      <thead><tr><th>Nome</th><th>Telefone</th><th></th><th></th></tr></thead>
+      <tbody>${lista.map(linhaEnt).join('')}${linhaEnt({})}</tbody>
+    </table>`;
+}
+
+document.getElementById('tabEntregadores').addEventListener('click', (e) => {
+  const btn = e.target.closest('[data-salvar-entregador]');
+  if (!btn) return;
+  const tr = linha(btn);
+  const corpo = { nome: campo(tr, 'nome').value.trim(), telefone: campo(tr, 'telefone').value.trim() || null, ativo: campo(tr, 'ativo').checked ? 1 : 0 };
+  const id = tr.dataset.id;
+  salvar(btn, id ? `${C}/entregadores/${id}` : `${C}/entregadores`, id ? 'PUT' : 'POST', corpo, id ? null : carregarEntregadores);
+});
+
+/* ---------- Horários ---------- */
+
+function renderStatusLoja(loja) {
+  const selo = document.getElementById('statusLoja');
+  selo.dataset.status = loja.aberto ? 'ok' : 'zerado';
+  selo.textContent = loja.aberto ? `✓ ${loja.mensagem}` : `✕ ${loja.mensagem}`;
+}
+
+async function carregarHorarios() {
+  const [horarios, loja] = await Promise.all([api(`${C}/horarios`), fetch(`${API_URL}/cardapio/loja`).then(r => r.json())]);
+  renderStatusLoja(loja);
+  const hhmm = (t) => String(t).slice(0, 5);
+  document.getElementById('tabHorarios').innerHTML = `
+    <table class="tabela tabela-edicao">
+      <thead><tr><th>Dia</th><th>Abre</th><th>Fecha</th><th></th></tr></thead>
+      <tbody>${DIAS.map((nome, d) => {
+        const h = horarios.find(x => x.dia_semana === d) || { abre: '18:00', fecha: '23:30', fechado: 0 };
+        return `
+        <tr data-dia="${d}">
+          <td><b>${nome}</b></td>
+          <td><input type="time" name="abre" value="${hhmm(h.abre)}" aria-label="Abre ${nome}"></td>
+          <td><input type="time" name="fecha" value="${hhmm(h.fecha)}" aria-label="Fecha ${nome}"></td>
+          <td><label class="check"><input type="checkbox" name="fechado" ${h.fechado ? 'checked' : ''}> Fechado neste dia</label></td>
+        </tr>`;
+      }).join('')}</tbody>
+    </table>`;
+}
+
+document.getElementById('salvarHorarios').addEventListener('click', async (e) => {
+  const btn = e.currentTarget;
+  const dias = [...document.querySelectorAll('#tabHorarios tr[data-dia]')].map(tr => ({
+    dia_semana: Number(tr.dataset.dia),
+    abre: campo(tr, 'abre').value || '00:00',
+    fecha: campo(tr, 'fecha').value || '23:59',
+    fechado: campo(tr, 'fechado').checked ? 1 : 0,
+  }));
+  btn.disabled = true;
+  try {
+    renderStatusLoja(await api(`${C}/horarios`, { method: 'PUT', body: dias }));
+    showToast('Horários salvos');
+  } catch (err) {
+    if (!(err instanceof ErroSessao)) showToast(err.message, 5000);
+  } finally {
+    btn.disabled = false;
+  }
+});
+
+/* ---------- Início ---------- */
+
+iniciarAreaEquipe({
+  titulo: 'Login do gerente',
+  cargos: ['admin'],
+  onEntrar: async () => {
+    document.getElementById('conteudo').hidden = false;
+    try {
+      await Promise.all([carregarPizzas(), carregarBebidas(), carregarMontagem(), carregarBairros(), carregarEntregadores(), carregarHorarios()]);
+    } catch (e) {
+      if (!(e instanceof ErroSessao)) showToast(e.message, 5000);
+    }
+  },
+});
+</script>
+
+</body>
+</html>

@@ -63,40 +63,49 @@
 
 <script src="cart.js"></script>
 <script>
-const PIZZAS = [
-  { id: 'margherita', nome: 'Margherita', cat: 'tradicionais', desc: 'Molho de tomate, mussarela e manjericão fresco', precos: { P: 32, M: 42, G: 52 } },
-  { id: 'calabresa', nome: 'Calabresa', cat: 'tradicionais', desc: 'Molho de tomate, mussarela, calabresa e cebola', precos: { P: 34, M: 44, G: 54 } },
-  { id: 'portuguesa', nome: 'Portuguesa', cat: 'tradicionais', desc: 'Presunto, ovos, cebola, azeitona e mussarela', precos: { P: 36, M: 47, G: 58 } },
-  { id: 'frango-catupiry', nome: 'Frango com Catupiry', cat: 'especiais', desc: 'Frango desfiado, catupiry cremoso e milho', precos: { P: 36, M: 47, G: 58 } },
-  { id: 'quatro-queijos', nome: 'Quatro Queijos', cat: 'especiais', desc: 'Mussarela, provolone, parmesão e gorgonzola', precos: { P: 38, M: 49, G: 60 } },
-  { id: 'pepperoni', nome: 'Pepperoni', cat: 'tradicionais', desc: 'Molho de tomate, mussarela e pepperoni picante', precos: { P: 37, M: 48, G: 59 } },
-  { id: 'toscana', nome: 'Toscana', cat: 'especiais', desc: 'Linguiça toscana, pimentão e cebola roxa', precos: { P: 38, M: 49, G: 60 } },
-  { id: 'vegetariana', nome: 'Vegetariana', cat: 'especiais', desc: 'Abobrinha, berinjela, tomate seco e rúcula', precos: { P: 36, M: 47, G: 58 } },
-  { id: 'choco-morango', nome: 'Chocolate com Morango', cat: 'doces', desc: 'Chocolate ao leite derretido e morango fatiado', precos: { P: 34, M: 44, G: 54 } },
-  { id: 'banana-canela', nome: 'Banana com Canela', cat: 'doces', desc: 'Banana, canela e leite condensado', precos: { P: 32, M: 42, G: 52 } },
-  { id: 'coca-cola', nome: 'Coca-Cola 350ml', cat: 'bebidas', desc: 'Lata gelada', precos: { Único: 6 } },
-  { id: 'guarana', nome: 'Guaraná 350ml', cat: 'bebidas', desc: 'Lata gelada', precos: { Único: 6 } },
-  { id: 'suco-natural', nome: 'Suco Natural', cat: 'bebidas', desc: 'Feito na hora — pergunte o sabor do dia', precos: { Único: 8 } },
-  { id: 'agua', nome: 'Água Mineral', cat: 'bebidas', desc: 'Com ou sem gás', precos: { Único: 4 } },
-];
-
-// Foto real de cada produto: img/pizzas/<id>.jpg ou img/bebidas/<id>.jpg
-function fotoHTML(p) {
-  const pasta = p.cat === 'bebidas' ? 'bebidas' : 'pizzas';
-  return `<img src="img/${pasta}/${p.id}.jpg" alt="${p.nome}" loading="lazy" width="600" height="600">`;
-}
-
-// Bebidas sem estoque (a venda de item zerado é proibida — a API também recusa)
+// Cardápio vem do banco (GET /cardapio/pizzas e /cardapio/bebidas): o dono altera preços
+// e sabores em Configurações, sem mexer no código. Foto: img/pizzas/<slug>.jpg / img/bebidas/<slug>.jpg
+let PRODUTOS = [];
 let bebidasEsgotadas = new Set();
 
-async function carregarDisponibilidade() {
+function paraProduto(p, ehBebida) {
+  return ehBebida
+    ? { id: p.slug || `bebida-${p.id}`, nome: p.nome, cat: 'bebidas', desc: p.descricao, precos: { Único: p.preco } }
+    : { id: p.slug, nome: p.nome, cat: p.categoria, desc: p.descricao, precos: { P: p.preco_p, M: p.preco_m, G: p.preco_g } };
+}
+
+async function carregarCardapio() {
+  const grid = document.getElementById('menuGrid');
+  grid.innerHTML = '<p class="carregando" style="grid-column:1/-1">Carregando o cardápio…</p>';
   try {
-    const resp = await fetch(`${API_URL}/cardapio/disponibilidade`);
-    if (!resp.ok) return;
-    const dados = await resp.json();
-    bebidasEsgotadas = new Set(dados.bebidas_esgotadas);
+    const [pizzas, bebidas, disp] = await Promise.all([
+      apiPublica('/cardapio/pizzas'),
+      apiPublica('/cardapio/bebidas'),
+      apiPublica('/cardapio/disponibilidade').catch(() => ({ bebidas_esgotadas: [] })),
+    ]);
+    PRODUTOS = [...pizzas.map(p => paraProduto(p, false)), ...bebidas.map(b => paraProduto(b, true))];
+    bebidasEsgotadas = new Set(disp.bebidas_esgotadas);
     renderMenu(document.querySelector('.tab.active').dataset.cat);
-  } catch (e) { /* sem API: mostra tudo; a API recusa no fechamento se faltar */ }
+  } catch (e) {
+    grid.innerHTML = `
+      <div class="empty-state" style="grid-column:1/-1">
+        <h3>Não conseguimos carregar o cardápio</h3>
+        <p>Verifique sua conexão e tente de novo.</p>
+        <button type="button" class="btn btn-dark" id="tentarDeNovo">Tentar de novo</button>
+      </div>`;
+    document.getElementById('tentarDeNovo').addEventListener('click', carregarCardapio);
+  }
+}
+
+function fotoHTML(p) {
+  const pasta = p.cat === 'bebidas' ? 'bebidas' : 'pizzas';
+  // produto novo sem foto ainda: mostra só o fundo da marca
+  return `<img src="img/${pasta}/${p.id}.jpg" alt="${escapeAttr(p.nome)}" loading="lazy" width="600" height="600"
+               onerror="this.parentElement.classList.add('sem-foto'); this.remove()">`;
+}
+
+function escapeAttr(texto) {
+  return String(texto).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
 }
 
 function estaEsgotado(p) {
@@ -109,42 +118,45 @@ function sizeOptionsHTML(precos) {
 
 function renderMenu(filter) {
   const grid = document.getElementById('menuGrid');
-  const items = PIZZAS.filter(p => filter === 'todas' || p.cat === filter);
+  const items = PRODUTOS.filter(p => filter === 'todas' || p.cat === filter);
+  if (!items.length) {
+    grid.innerHTML = '<p class="carregando" style="grid-column:1/-1">Nenhum item nesta categoria no momento.</p>';
+    return;
+  }
   grid.innerHTML = items.map(p => `
     <article class="pizza-card ${estaEsgotado(p) ? 'esgotado' : ''}">
       <div class="foto">${fotoHTML(p)}${estaEsgotado(p) ? '<span class="selo-esgotado">Esgotado</span>' : ''}</div>
-      <h3>${p.nome}</h3>
-      <p class="desc">${p.desc}</p>
+      <h3>${escapeAttr(p.nome)}</h3>
+      <p class="desc">${escapeAttr(p.desc || '')}</p>
       <div class="card-controls">
-        <select class="size-select" data-id="${p.id}" ${estaEsgotado(p) ? 'disabled' : ''}>
+        <select class="size-select" data-id="${p.id}" ${estaEsgotado(p) ? 'disabled' : ''} aria-label="Tamanho de ${escapeAttr(p.nome)}">
           ${sizeOptionsHTML(p.precos)}
         </select>
         <button class="btn-add-icon" data-add="${p.id}" ${estaEsgotado(p) ? 'disabled' : ''}
-                aria-label="${estaEsgotado(p) ? `${p.nome} esgotado` : `Adicionar ${p.nome} ao carrinho`}">+</button>
+                aria-label="${estaEsgotado(p) ? `${escapeAttr(p.nome)} esgotado` : `Adicionar ${escapeAttr(p.nome)} ao carrinho`}">+</button>
       </div>
     </article>
   `).join('');
-
-  grid.querySelectorAll('[data-add]').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const id = btn.dataset.add;
-      const pizza = PIZZAS.find(p => p.id === id);
-      if (estaEsgotado(pizza)) return;
-      const select = grid.querySelector(`.size-select[data-id="${id}"]`);
-      const tamanho = select.value;
-      addToCart({
-        id: pizza.id,
-        tipo: 'cardapio',
-        nome: pizza.nome,
-        tamanho: tamanho === 'Único' ? '' : tamanho,
-        precoUnit: pizza.precos[tamanho],
-        qtd: 1,
-        detalhes: pizza.cat === 'bebidas' ? 'Bebida' : `Tamanho ${tamanho}`,
-      });
-      showToast(`${pizza.nome} adicionada ao carrinho`);
-    });
-  });
 }
+
+// um único listener no grid (os cards são redesenhados a cada filtro)
+document.getElementById('menuGrid').addEventListener('click', (event) => {
+  const btn = event.target.closest('[data-add]');
+  if (!btn) return;
+  const produto = PRODUTOS.find(p => p.id === btn.dataset.add);
+  if (!produto || estaEsgotado(produto)) return;
+  const tamanho = document.querySelector(`.size-select[data-id="${produto.id}"]`).value;
+  addToCart({
+    id: produto.id,
+    tipo: 'cardapio',
+    nome: produto.nome,
+    tamanho: tamanho === 'Único' ? '' : tamanho,
+    precoUnit: produto.precos[tamanho], // só para mostrar no carrinho; o valor cobrado vem da API
+    qtd: 1,
+    detalhes: produto.cat === 'bebidas' ? 'Bebida' : `Tamanho ${tamanho}`,
+  });
+  showToast(`${produto.nome} adicionada ao carrinho`);
+});
 
 document.querySelectorAll('.tab').forEach(tab => {
   tab.addEventListener('click', () => {
@@ -154,8 +166,8 @@ document.querySelectorAll('.tab').forEach(tab => {
   });
 });
 
-renderMenu('todas');
-carregarDisponibilidade();
+carregarCardapio();
+carregarStatusLoja();
 </script>
 
 </body>

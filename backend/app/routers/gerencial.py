@@ -41,7 +41,7 @@ def resumo_financeiro(
 
     pedidos = (
         db.query(models.Pedido)
-        .options(joinedload(models.Pedido.itens))
+        .options(joinedload(models.Pedido.itens), joinedload(models.Pedido.entregador))
         .filter(
             models.Pedido.criado_em >= inicio_do_dia_em_utc(inicio),
             models.Pedido.criado_em < inicio_do_dia_em_utc(fim + timedelta(days=1)),
@@ -75,6 +75,18 @@ def resumo_financeiro(
         por_dia[d.data]["despesas"] += d.valor
         por_categoria[d.categoria] += d.valor
 
+    pagamentos = defaultdict(lambda: {"pedidos": 0, "total": 0.0})
+    entregas = defaultdict(lambda: {"nome": "", "entregas": 0, "taxas": 0.0})
+    for p in validos:
+        forma = p.forma_pagamento.value if p.forma_pagamento else "nao_informado"
+        pagamentos[forma]["pedidos"] += 1
+        pagamentos[forma]["total"] += p.total
+        if p.tipo_entrega == models.TipoEntrega.delivery and p.status == models.StatusPedido.entregue:
+            chave = p.entregador_id or 0
+            entregas[chave]["nome"] = p.entregador.nome if p.entregador else "Sem entregador definido"
+            entregas[chave]["entregas"] += 1
+            entregas[chave]["taxas"] += p.taxa_entrega
+
     faturamento = round(sum(p.total for p in validos), 2)
     total_despesas = round(sum(d.valor for d in despesas), 2)
 
@@ -107,6 +119,18 @@ def resumo_financeiro(
             key=lambda i: i.receita,
             reverse=True,
         )[:10],
+        a_receber=round(sum(p.total for p in validos if not p.pago), 2),
+        por_pagamento=sorted(
+            (schemas.ResumoPagamento(forma=f, pedidos=v["pedidos"], total=round(v["total"], 2)) for f, v in pagamentos.items()),
+            key=lambda x: x.total,
+            reverse=True,
+        ),
+        por_entregador=sorted(
+            (schemas.ResumoEntregador(entregador_id=k or None, nome=v["nome"], entregas=v["entregas"], taxas=round(v["taxas"], 2))
+             for k, v in entregas.items()),
+            key=lambda x: x.entregas,
+            reverse=True,
+        ),
         despesas_por_categoria=sorted(
             (schemas.ResumoCategoria(categoria=c, total=round(t, 2)) for c, t in por_categoria.items()),
             key=lambda c: c.total,

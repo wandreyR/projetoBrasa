@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 
 from .. import models, schemas
 from ..database import get_db
+from ..loja_service import status_loja
 
 router = APIRouter(prefix="/cardapio", tags=["Cardápio"])
 
@@ -14,12 +15,12 @@ def listar_pizzas(categoria: Optional[models.CategoriaPizza] = None, db: Session
     query = db.query(models.Pizza).filter(models.Pizza.ativo == 1)
     if categoria:
         query = query.filter(models.Pizza.categoria == categoria)
-    return query.order_by(models.Pizza.nome).all()
+    return query.order_by(models.Pizza.id).all()
 
 
 @router.get("/bebidas", response_model=List[schemas.BebidaOut])
 def listar_bebidas(db: Session = Depends(get_db)):
-    return db.query(models.Bebida).filter(models.Bebida.ativo == 1).order_by(models.Bebida.nome).all()
+    return db.query(models.Bebida).filter(models.Bebida.ativo == 1).order_by(models.Bebida.id).all()
 
 
 @router.get("/ingredientes", response_model=List[schemas.IngredienteOut])
@@ -30,7 +31,46 @@ def listar_ingredientes(
     query = db.query(models.Ingrediente).filter(models.Ingrediente.ativo == 1)
     if tipo:
         query = query.filter(models.Ingrediente.tipo == tipo)
-    return query.order_by(models.Ingrediente.nome).all()
+    return query.order_by(models.Ingrediente.id).all()
+
+
+MAX_PORCOES = 3  # porções do mesmo adicional por pizza montada (validado também no pedido)
+
+
+@router.get("/montagem", response_model=schemas.MontagemOut)
+def montagem(db: Session = Depends(get_db)):
+    """Dados da tela "Monte a sua": tamanhos com preço base e ingredientes por tipo."""
+    ingredientes = (
+        db.query(models.Ingrediente)
+        .filter(models.Ingrediente.ativo == 1)
+        .order_by(models.Ingrediente.id)
+        .all()
+    )
+    por_tipo = lambda t: [i for i in ingredientes if i.tipo == t]
+    return schemas.MontagemOut(
+        tamanhos=db.query(models.TamanhoPizza).order_by(models.TamanhoPizza.preco_base).all(),
+        massas=por_tipo(models.TipoIngrediente.massa),
+        molhos=por_tipo(models.TipoIngrediente.molho),
+        coberturas=por_tipo(models.TipoIngrediente.topping),
+        max_porcoes=MAX_PORCOES,
+    )
+
+
+@router.get("/loja", response_model=schemas.LojaStatusOut)
+def loja(db: Session = Depends(get_db)):
+    """Aberto ou fechado agora (horário de funcionamento e pausa da cozinha)."""
+    return status_loja(db)
+
+
+@router.get("/bairros", response_model=List[schemas.BairroOut])
+def bairros(db: Session = Depends(get_db)):
+    """Bairros atendidos e a taxa de entrega de cada um."""
+    return (
+        db.query(models.BairroEntrega)
+        .filter(models.BairroEntrega.ativo == 1)
+        .order_by(models.BairroEntrega.nome)
+        .all()
+    )
 
 
 @router.get("/disponibilidade", response_model=schemas.DisponibilidadeOut)

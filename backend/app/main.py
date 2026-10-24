@@ -1,15 +1,17 @@
 import os
 import time
+from datetime import time as dt_time
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 
-from .database import Base, engine, SessionLocal
+from .database import engine, SessionLocal
 from . import models
 from .auth import hash_senha
-from .routers import cardapio, auth, pedidos, gerencial, estoque
+from .migracoes import migrar_banco
+from .routers import cardapio, auth, pedidos, gerencial, estoque, configuracoes
 
 app = FastAPI(title="BRASA Pizzaria API", version="1.0.0")
 
@@ -28,6 +30,7 @@ app.include_router(auth.router)
 app.include_router(pedidos.router)
 app.include_router(gerencial.router)
 app.include_router(estoque.router)
+app.include_router(configuracoes.router)
 
 
 def seed_data(db: Session):
@@ -70,39 +73,39 @@ def seed_data(db: Session):
 
     if db.query(models.Bebida).count() == 0:
         bebidas = [
-            models.Bebida(nome="Coca-Cola 350ml", descricao="Lata gelada", preco=6),
-            models.Bebida(nome="Guaraná 350ml", descricao="Lata gelada", preco=6),
-            models.Bebida(nome="Suco Natural", descricao="Feito na hora", preco=8),
-            models.Bebida(nome="Água Mineral", descricao="Com ou sem gás", preco=4),
+            models.Bebida(slug="coca-cola", nome="Coca-Cola 350ml", descricao="Lata gelada", preco=6),
+            models.Bebida(slug="guarana", nome="Guaraná 350ml", descricao="Lata gelada", preco=6),
+            models.Bebida(slug="suco-natural", nome="Suco Natural", descricao="Feito na hora", preco=8),
+            models.Bebida(slug="agua", nome="Água Mineral", descricao="Com ou sem gás", preco=4),
         ]
         db.add_all(bebidas)
 
     if db.query(models.Ingrediente).count() == 0:
         ingredientes = [
             # Massas
-            models.Ingrediente(nome="Tradicional", tipo=models.TipoIngrediente.massa, preco_adicional=0, cor_hex="#E9C989"),
-            models.Ingrediente(nome="Fina", tipo=models.TipoIngrediente.massa, preco_adicional=0, cor_hex="#E9C989"),
-            models.Ingrediente(nome="Integral", tipo=models.TipoIngrediente.massa, preco_adicional=2, cor_hex="#C9A876"),
+            models.Ingrediente(slug="tradicional", nome="Tradicional", tipo=models.TipoIngrediente.massa, preco_adicional=0, cor_hex="#E9C989"),
+            models.Ingrediente(slug="fina", nome="Fina", tipo=models.TipoIngrediente.massa, preco_adicional=0, cor_hex="#E9C989"),
+            models.Ingrediente(slug="integral", nome="Integral", tipo=models.TipoIngrediente.massa, preco_adicional=2, cor_hex="#C9A876"),
             # Molhos
-            models.Ingrediente(nome="Molho de tomate", tipo=models.TipoIngrediente.molho, preco_adicional=0, cor_hex="#B7371F"),
-            models.Ingrediente(nome="Branco (alho e azeite)", tipo=models.TipoIngrediente.molho, preco_adicional=0, cor_hex="#EFE3C6"),
-            models.Ingrediente(nome="Barbecue", tipo=models.TipoIngrediente.molho, preco_adicional=2, cor_hex="#5A2E14"),
+            models.Ingrediente(slug="tomate", nome="Molho de tomate", tipo=models.TipoIngrediente.molho, preco_adicional=0, cor_hex="#B7371F"),
+            models.Ingrediente(slug="branco", nome="Branco (alho e azeite)", tipo=models.TipoIngrediente.molho, preco_adicional=0, cor_hex="#EFE3C6"),
+            models.Ingrediente(slug="barbecue", nome="Barbecue", tipo=models.TipoIngrediente.molho, preco_adicional=2, cor_hex="#5A2E14"),
             # Coberturas
-            models.Ingrediente(nome="Mussarela", tipo=models.TipoIngrediente.topping, preco_adicional=3, cor_hex="#FFFBF3"),
-            models.Ingrediente(nome="Calabresa", tipo=models.TipoIngrediente.topping, preco_adicional=3, cor_hex="#8B3A2B"),
-            models.Ingrediente(nome="Frango", tipo=models.TipoIngrediente.topping, preco_adicional=3, cor_hex="#E8D9B5"),
-            models.Ingrediente(nome="Presunto", tipo=models.TipoIngrediente.topping, preco_adicional=3, cor_hex="#E8A6A0"),
-            models.Ingrediente(nome="Bacon", tipo=models.TipoIngrediente.topping, preco_adicional=4, cor_hex="#A85C3F"),
-            models.Ingrediente(nome="Champignon", tipo=models.TipoIngrediente.topping, preco_adicional=3, cor_hex="#D9C9A8"),
-            models.Ingrediente(nome="Cebola roxa", tipo=models.TipoIngrediente.topping, preco_adicional=2, cor_hex="#7A4B6B"),
-            models.Ingrediente(nome="Pimentão", tipo=models.TipoIngrediente.topping, preco_adicional=2, cor_hex="#4C6444"),
-            models.Ingrediente(nome="Azeitona", tipo=models.TipoIngrediente.topping, preco_adicional=2, cor_hex="#2B2B1E"),
-            models.Ingrediente(nome="Milho", tipo=models.TipoIngrediente.topping, preco_adicional=2, cor_hex="#E8B923"),
-            models.Ingrediente(nome="Catupiry", tipo=models.TipoIngrediente.topping, preco_adicional=4, cor_hex="#FFF6DC"),
-            models.Ingrediente(nome="Gorgonzola", tipo=models.TipoIngrediente.topping, preco_adicional=4, cor_hex="#E9E2C9"),
-            models.Ingrediente(nome="Rúcula", tipo=models.TipoIngrediente.topping, preco_adicional=3, cor_hex="#4C6444"),
-            models.Ingrediente(nome="Tomate seco", tipo=models.TipoIngrediente.topping, preco_adicional=3, cor_hex="#7A2E1E"),
-            models.Ingrediente(nome="Palmito", tipo=models.TipoIngrediente.topping, preco_adicional=3, cor_hex="#EDE4C8"),
+            models.Ingrediente(slug="mussarela", nome="Mussarela", tipo=models.TipoIngrediente.topping, preco_adicional=3, cor_hex="#FFFBF3"),
+            models.Ingrediente(slug="calabresa", nome="Calabresa", tipo=models.TipoIngrediente.topping, preco_adicional=3, cor_hex="#8B3A2B"),
+            models.Ingrediente(slug="frango", nome="Frango", tipo=models.TipoIngrediente.topping, preco_adicional=3, cor_hex="#E8D9B5"),
+            models.Ingrediente(slug="presunto", nome="Presunto", tipo=models.TipoIngrediente.topping, preco_adicional=3, cor_hex="#E8A6A0"),
+            models.Ingrediente(slug="bacon", nome="Bacon", tipo=models.TipoIngrediente.topping, preco_adicional=4, cor_hex="#A85C3F"),
+            models.Ingrediente(slug="champignon", nome="Champignon", tipo=models.TipoIngrediente.topping, preco_adicional=3, cor_hex="#D9C9A8"),
+            models.Ingrediente(slug="cebola", nome="Cebola roxa", tipo=models.TipoIngrediente.topping, preco_adicional=2, cor_hex="#7A4B6B"),
+            models.Ingrediente(slug="pimentao", nome="Pimentão", tipo=models.TipoIngrediente.topping, preco_adicional=2, cor_hex="#4C6444"),
+            models.Ingrediente(slug="azeitona", nome="Azeitona", tipo=models.TipoIngrediente.topping, preco_adicional=2, cor_hex="#2B2B1E"),
+            models.Ingrediente(slug="milho", nome="Milho", tipo=models.TipoIngrediente.topping, preco_adicional=2, cor_hex="#E8B923"),
+            models.Ingrediente(slug="catupiry", nome="Catupiry", tipo=models.TipoIngrediente.topping, preco_adicional=4, cor_hex="#FFF6DC"),
+            models.Ingrediente(slug="gorgonzola", nome="Gorgonzola", tipo=models.TipoIngrediente.topping, preco_adicional=4, cor_hex="#E9E2C9"),
+            models.Ingrediente(slug="rucula", nome="Rúcula", tipo=models.TipoIngrediente.topping, preco_adicional=3, cor_hex="#4C6444"),
+            models.Ingrediente(slug="tomate-seco", nome="Tomate seco", tipo=models.TipoIngrediente.topping, preco_adicional=3, cor_hex="#7A2E1E"),
+            models.Ingrediente(slug="palmito", nome="Palmito", tipo=models.TipoIngrediente.topping, preco_adicional=3, cor_hex="#EDE4C8"),
         ]
         db.add_all(ingredientes)
 
@@ -118,6 +121,30 @@ def seed_data(db: Session):
 
     db.commit()
     seed_estoque(db)
+    seed_operacao(db)
+
+
+def seed_operacao(db: Session):
+    """Tamanhos da pizza montada, horários e bairros de entrega (cada um só se estiver vazio)."""
+    if db.query(models.TamanhoPizza).count() == 0:
+        db.add_all([
+            models.TamanhoPizza(codigo="P", nome="Pequena", fatias=4, preco_base=28),
+            models.TamanhoPizza(codigo="M", nome="Média", fatias=6, preco_base=38),
+            models.TamanhoPizza(codigo="G", nome="Grande", fatias=8, preco_base=48),
+        ])
+    if db.query(models.HorarioFuncionamento).count() == 0:
+        # aberto o dia todo até o dono configurar os horários reais na tela de Configurações
+        db.add_all([
+            models.HorarioFuncionamento(dia_semana=d, abre=dt_time(0, 0), fecha=dt_time(23, 59), fechado=0)
+            for d in range(7)
+        ])
+    if db.query(models.BairroEntrega).count() == 0:
+        # exemplos com a antiga taxa única (R$ 6) — ajuste nomes e valores em Configurações
+        db.add_all([
+            models.BairroEntrega(nome=nome, taxa=6.0)
+            for nome in ["Setor Central", "Setor Bueno", "Setor Marista", "Setor Oeste", "Setor Sul", "Jardim Goiás"]
+        ])
+    db.commit()
 
 
 # Estoque inicial de exemplo — ajuste as quantidades na tela de estoque.
@@ -223,7 +250,7 @@ def aguardar_banco(tentativas: int = 10, espera_segundos: float = 2.0):
 @app.on_event("startup")
 def on_startup():
     aguardar_banco()
-    Base.metadata.create_all(bind=engine)
+    migrar_banco()  # Alembic: cria/atualiza as tabelas sem perder dados
     db = SessionLocal()
     try:
         seed_data(db)

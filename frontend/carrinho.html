@@ -53,14 +53,35 @@
         <input type="tel" name="telefone" autocomplete="tel" required placeholder="(11) 98765-4321"
                minlength="10" maxlength="20" title="Informe DDD + número">
       </label>
-      <label class="field field-full" id="enderecoField">
+      <label class="field" id="bairroField">
+        <span>Bairro</span>
+        <select name="bairro_id" required>
+          <option value="">Carregando bairros…</option>
+        </select>
+      </label>
+      <label class="field" id="enderecoField">
         <span>Endereço de entrega</span>
         <input type="text" name="endereco" autocomplete="street-address" required maxlength="255"
-               placeholder="Rua, número, complemento, bairro">
+               placeholder="Rua, número, complemento">
       </label>
       <label class="field field-full">
         <span>Observações <em>(opcional)</em></span>
-        <textarea name="observacoes" rows="2" maxlength="500" placeholder="Ex.: sem cebola, troco para R$ 100"></textarea>
+        <textarea name="observacoes" rows="2" maxlength="500" placeholder="Ex.: sem cebola, interfone quebrado"></textarea>
+      </label>
+    </div>
+
+    <h2 class="titulo-pagamento">Pagamento</h2>
+    <p class="dica-pagamento">Você paga na entrega ou na retirada.</p>
+    <div class="segmented" role="radiogroup" aria-label="Forma de pagamento">
+      <label><input type="radio" name="forma_pagamento" value="pix" checked><span>Pix</span></label>
+      <label><input type="radio" name="forma_pagamento" value="credito"><span>Crédito</span></label>
+      <label><input type="radio" name="forma_pagamento" value="debito"><span>Débito</span></label>
+      <label><input type="radio" name="forma_pagamento" value="dinheiro"><span>Dinheiro</span></label>
+    </div>
+    <div class="field-grid" id="trocoField" hidden>
+      <label class="field">
+        <span>Troco para quanto? <em>(deixe vazio se não precisar)</em></span>
+        <input type="text" name="troco_para" inputmode="decimal" placeholder="Ex.: 100">
       </label>
     </div>
 
@@ -77,6 +98,9 @@
 <script>
 const checkoutForm = document.getElementById('checkoutForm');
 const enderecoField = document.getElementById('enderecoField');
+const bairroField = document.getElementById('bairroField');
+const trocoField = document.getElementById('trocoField');
+let BAIRROS = [];
 
 function escapeHTML(texto) {
   const div = document.createElement('div');
@@ -86,6 +110,12 @@ function escapeHTML(texto) {
 
 function tipoEntregaSelecionado() {
   return checkoutForm.querySelector('input[name="tipo_entrega"]:checked').value;
+}
+
+function taxaSelecionada() {
+  if (tipoEntregaSelecionado() !== 'delivery') return 0;
+  const bairro = BAIRROS.find(b => String(b.id) === checkoutForm.elements.bairro_id.value);
+  return bairro ? bairro.taxa : null; // null = ainda não escolheu o bairro
 }
 
 // Foto do item: pizza montada usa a foto da massa; bebida não tem tamanho
@@ -99,7 +129,61 @@ function fotoDoItem(item) {
 }
 
 function pizzaThumbSmallHTML(item) {
-  return `<img class="foto-item" src="${fotoDoItem(item)}" alt="" width="56" height="56" loading="lazy">`;
+  return `<img class="foto-item" src="${fotoDoItem(item)}" alt="" width="56" height="56" loading="lazy"
+               onerror="this.style.visibility='hidden'">`;
+}
+
+/* ---------- Preços atualizados do banco ----------
+   O carrinho guarda o preço do momento em que o item foi adicionado. Se o dono mudou
+   o preço depois, atualiza aqui para o cliente ver o mesmo valor que será cobrado. */
+async function atualizarPrecos() {
+  try {
+    const [pizzas, bebidas, montagem] = await Promise.all([
+      apiPublica('/cardapio/pizzas'), apiPublica('/cardapio/bebidas'), apiPublica('/cardapio/montagem'),
+    ]);
+    const ingredientes = [...montagem.massas, ...montagem.molhos, ...montagem.coberturas];
+    const cart = getCart();
+    let mudou = false;
+    cart.forEach(item => {
+      let preco = null;
+      if (item.tipo === 'custom') {
+        const base = montagem.tamanhos.find(t => t.codigo === item.tamanho);
+        const nomes = Array.isArray(item.ingredientes) ? item.ingredientes : [];
+        if (base) preco = base.preco_base + nomes.reduce((soma, nome) => {
+          const ing = ingredientes.find(i => i.nome === nome);
+          return soma + (ing ? ing.preco_adicional : 0);
+        }, 0);
+      } else if (item.tamanho) {
+        const pizza = pizzas.find(p => p.slug === item.id);
+        if (pizza) preco = { P: pizza.preco_p, M: pizza.preco_m, G: pizza.preco_g }[item.tamanho];
+      } else {
+        const bebida = bebidas.find(b => b.slug === item.id || b.nome === item.nome);
+        if (bebida) preco = bebida.preco;
+      }
+      if (preco !== null && Math.abs(preco - item.precoUnit) > 0.001) {
+        item.precoUnit = preco;
+        mudou = true;
+      }
+    });
+    if (mudou) {
+      saveCart(cart);
+      renderCart();
+      showToast('Atualizamos os preços do carrinho com os valores de hoje', 4000);
+    }
+  } catch (e) { /* sem API: mantém os preços do carrinho; a API cobra o valor oficial */ }
+}
+
+async function carregarBairros() {
+  const select = checkoutForm.elements.bairro_id;
+  try {
+    BAIRROS = await apiPublica('/cardapio/bairros');
+    select.innerHTML = '<option value="">Escolha o bairro…</option>' + BAIRROS.map(b =>
+      `<option value="${b.id}">${escapeHTML(b.nome)} — ${b.taxa ? formatPrice(b.taxa) : 'grátis'}</option>`).join('');
+    if (!BAIRROS.length) select.innerHTML = '<option value="">Sem entrega no momento — retire no balcão</option>';
+  } catch (e) {
+    select.innerHTML = '<option value="">Não foi possível carregar os bairros</option>';
+  }
+  renderCart();
 }
 
 function renderCart() {
@@ -139,7 +223,9 @@ function renderCart() {
   `).join('');
 
   const subtotal = getCartTotal();
-  const taxaEntrega = tipoEntregaSelecionado() === 'delivery' ? TAXA_ENTREGA : 0;
+  const taxa = taxaSelecionada();
+  const textoTaxa = tipoEntregaSelecionado() !== 'delivery' ? 'Grátis (retirada)'
+    : taxa === null ? 'Escolha o bairro' : taxa ? formatPrice(taxa) : 'Grátis';
 
   container.innerHTML = `
     <div class="cart-list">${itemsHTML}</div>
@@ -150,11 +236,11 @@ function renderCart() {
       </div>
       <div class="summary-row">
         <span>Taxa de entrega</span>
-        <span>${taxaEntrega ? formatPrice(taxaEntrega) : 'Grátis (retirada)'}</span>
+        <span>${textoTaxa}</span>
       </div>
       <div class="summary-row total">
         <span>Total</span>
-        <span class="val">${formatPrice(subtotal + taxaEntrega)}</span>
+        <span class="val">${formatPrice(subtotal + (taxa || 0))}</span>
       </div>
     </div>
   `;
@@ -171,36 +257,65 @@ function renderCart() {
   );
 }
 
+const PAGAMENTO_TEXTO = { pix: 'Pix', credito: 'cartão de crédito', debito: 'cartão de débito', dinheiro: 'dinheiro' };
+
 function renderConfirmacao(pedido) {
   checkoutForm.hidden = true;
   checkoutForm.reset();
   const entrega = pedido.tipo_entrega === 'delivery'
-    ? `Vamos entregar em <strong>${escapeHTML(pedido.endereco_entrega)}</strong>.`
+    ? `Vamos entregar em <strong>${escapeHTML(pedido.endereco_entrega)}</strong> (${escapeHTML(pedido.bairro_nome)}).`
     : 'Avisaremos pelo telefone quando estiver pronto para retirada.';
+  const pagamento = `Pagamento: <strong>${PAGAMENTO_TEXTO[pedido.forma_pagamento] || pedido.forma_pagamento}</strong>`
+    + (pedido.troco_para ? ` (troco para ${formatPrice(pedido.troco_para)})` : '') + ' na entrega/retirada.';
   document.getElementById('cartContent').innerHTML = `
     <div class="empty-state order-confirmed">
       <div class="pizza-thumb"></div>
       <p class="eyebrow">Pedido nº ${pedido.id}</p>
       <h3>Pedido enviado para o forno!</h3>
-      <p>${entrega} Total: <strong>${formatPrice(pedido.total)}</strong>.</p>
-      <a href="cardapio.html" class="btn btn-dark">Voltar ao cardápio</a>
+      <p>${entrega} Total: <strong>${formatPrice(pedido.total)}</strong>.<br>${pagamento}</p>
+      <div style="display:flex; gap:10px; justify-content:center; flex-wrap:wrap;">
+        <a href="${linkAcompanhar(pedido.codigo_acompanhamento)}" class="btn btn-primary">Acompanhar meu pedido</a>
+        <a href="cardapio.html" class="btn btn-ghost">Voltar ao cardápio</a>
+      </div>
     </div>
   `;
   window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 
-// Entrega x retirada: mostra/esconde endereço e recalcula a taxa no resumo
+function atualizarCamposEntrega() {
+  const delivery = tipoEntregaSelecionado() === 'delivery';
+  enderecoField.hidden = !delivery;
+  bairroField.hidden = !delivery;
+  enderecoField.querySelector('input').required = delivery;
+  bairroField.querySelector('select').required = delivery;
+  renderCart();
+}
+
+// Entrega x retirada: mostra/esconde endereço e bairro, recalcula a taxa
 checkoutForm.querySelectorAll('input[name="tipo_entrega"]').forEach(radio =>
+  radio.addEventListener('change', atualizarCamposEntrega)
+);
+checkoutForm.elements.bairro_id.addEventListener('change', renderCart);
+
+// Dinheiro: pergunta o troco
+checkoutForm.querySelectorAll('input[name="forma_pagamento"]').forEach(radio =>
   radio.addEventListener('change', () => {
-    const delivery = tipoEntregaSelecionado() === 'delivery';
-    enderecoField.hidden = !delivery;
-    enderecoField.querySelector('input').required = delivery;
-    renderCart();
+    trocoField.hidden = checkoutForm.elements.forma_pagamento.value !== 'dinheiro';
   })
 );
 
+// Loja fechada/pausada: o botão avisa em vez de enviar
+document.addEventListener('brasa:loja', (e) => {
+  const botao = document.getElementById('checkoutBtn');
+  botao.disabled = !e.detail.aberto;
+  botao.textContent = e.detail.aberto ? 'Confirmar pedido' : 'Pizzaria fechada agora';
+});
+
 initCheckout(checkoutForm, { onSuccess: renderConfirmacao });
 renderCart();
+carregarBairros();
+atualizarPrecos();
+carregarStatusLoja();
 </script>
 
 </body>

@@ -19,6 +19,7 @@
       <a href="cozinha.html" class="active">Cozinha</a>
       <a href="estoque.html">Estoque</a>
       <a href="gerencial.html" data-somente-admin hidden>Gerencial</a>
+      <a href="configuracoes.html" data-somente-admin hidden>Configurações</a>
     </nav>
     <div class="usuario-box" data-usuario></div>
   </div>
@@ -33,35 +34,64 @@
     </div>
     <div style="display:flex; gap:8px; flex-wrap:wrap;">
       <button type="button" class="btn-som" id="btnSom" aria-pressed="true">Som de novo pedido</button>
+      <button type="button" class="btn-som" id="btnImprimir" aria-pressed="false">Imprimir ao chegar</button>
+      <button type="button" class="btn-som" id="btnPausa">⏸ Pausar pedidos do site</button>
       <span class="conexao" id="conexao" data-estado="offline" role="status">
         <span class="dot"></span><span id="conexaoTexto">Desconectado</span>
       </span>
     </div>
   </div>
 
+  <div class="aviso-novos" id="avisoNovos" role="alert" hidden></div>
+  <div class="aviso-loja-equipe" id="avisoLoja" role="status" hidden></div>
   <div class="aviso-estoque" id="avisoEstoque" role="status" hidden></div>
 
   <div class="kanban" id="kanban"></div>
 
 </main>
 
+<!-- Saiu para entrega: escolher o entregador -->
+<dialog class="dialogo" id="dlgEntregador">
+  <form method="dialog" id="formEntregador">
+    <h2 id="entregadorTitulo">Saiu para entrega</h2>
+    <p class="sub" id="entregadorSub"></p>
+    <label class="field">
+      <span>Quem vai levar?</span>
+      <select name="entregador"></select>
+    </label>
+    <p class="dica">Cadastre os entregadores em Configurações (dono).</p>
+    <div class="botoes">
+      <button type="button" class="btn btn-ghost" data-fechar>Cancelar</button>
+      <button type="submit" class="btn btn-primary">Confirmar saída</button>
+    </div>
+  </form>
+</dialog>
+
 <script src="staff.js"></script>
 <script>
 /* ---------- Configuração do quadro ---------- */
 
 const COLUNAS = [
-  { status: 'pendente',   titulo: 'Novos',       dica: 'Aguardando início' },
-  { status: 'em_preparo', titulo: 'Em preparo',  dica: 'No forno' },
-  { status: 'pronto',     titulo: 'Prontos',     dica: 'Aguardando entregador ou cliente' },
-  { status: 'entregue',   titulo: 'Entregues',   dica: 'Finalizados hoje' },
+  { status: 'pendente',     titulo: 'Novos',            dica: 'Aguardando início' },
+  { status: 'em_preparo',   titulo: 'Em preparo',       dica: 'No forno' },
+  { status: 'pronto',       titulo: 'Prontos',          dica: 'Aguardando entregador ou cliente' },
+  { status: 'saiu_entrega', titulo: 'Saiu p/ entrega',  dica: 'Com o entregador' },
+  { status: 'entregue',     titulo: 'Finalizados',      dica: 'Entregues e retirados hoje' },
 ];
 
 const MINUTOS_ATRASO = 40;          // pedido ativo há mais tempo que isso fica destacado
+const REPETIR_ALARME_MS = 20000;    // repete o alarme enquanto houver pedido novo não visto
 const SOM_KEY = 'brasa_cozinha_som';
+const IMPRIMIR_KEY = 'brasa_cozinha_imprimir';
+const PAGAMENTO = { pix: 'Pix', credito: 'Crédito', debito: 'Débito', dinheiro: 'Dinheiro' };
 
 const pedidos = new Map();          // id → pedido
-const novosIds = new Set();         // destacados até o próximo render
+const novosIds = new Set();         // destacados (animação) até o próximo render
+const naoVistos = new Set();        // pedidos novos que ninguém confirmou ainda → alarme repete
 let somLigado = localStorage.getItem(SOM_KEY) !== '0';
+let imprimirAuto = localStorage.getItem(IMPRIMIR_KEY) === '1';
+let entregadores = [];
+let loja = { aberto: true, pausado: false, mensagem: '' };
 
 /* ---------- Ações disponíveis por status ---------- */
 
@@ -76,12 +106,15 @@ function acoesDoPedido(p) {
     acoes.cancelar = true;
   } else if (p.status === 'pronto') {
     acoes.principal = p.tipo_entrega === 'delivery'
-      ? { label: 'Entregue ao entregador', para: 'entregue', classe: 'btn-dark' }
+      ? { label: 'Saiu para entrega', para: 'saiu_entrega', classe: 'btn-dark' }
       : { label: 'Retirado pelo cliente', para: 'entregue', classe: 'btn-dark' };
     acoes.voltar = 'em_preparo';
     acoes.cancelar = true;
-  } else if (p.status === 'entregue') {
+  } else if (p.status === 'saiu_entrega') {
+    acoes.principal = { label: 'Entregue ao cliente', para: 'entregue', classe: 'btn-dark' };
     acoes.voltar = 'pronto';
+  } else if (p.status === 'entregue') {
+    acoes.voltar = p.tipo_entrega === 'delivery' ? 'saiu_entrega' : 'pronto';
   }
   return acoes;
 }
@@ -95,12 +128,25 @@ function minutosDesde(data) {
 function textoTempo(p) {
   const criado = parseDataApi(p.criado_em);
   if (p.status === 'entregue' || p.status === 'cancelado') {
-    const fim = parseDataApi(p.atualizado_em) || criado;
+    const fim = parseDataApi(p.finalizado_em || p.atualizado_em) || criado;
     return { texto: fim.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }), atrasado: false };
   }
   const min = minutosDesde(criado);
   const texto = min < 60 ? `há ${min} min` : `há ${Math.floor(min / 60)}h${String(min % 60).padStart(2, '0')}`;
   return { texto, atrasado: min >= MINUTOS_ATRASO };
+}
+
+function pagamentoHTML(p) {
+  if (p.status === 'cancelado') return '';
+  const forma = PAGAMENTO[p.forma_pagamento] || 'Pagamento a combinar';
+  let detalhe = '';
+  if (p.forma_pagamento === 'dinheiro' && p.troco_para) {
+    detalhe = ` · troco para ${formatPrice(p.troco_para)} <strong>(levar ${formatPrice(p.troco_para - p.total)})</strong>`;
+  }
+  const estado = p.pago
+    ? `<span class="pago-ok">✓ pago</span> <button type="button" class="link-acao" data-pago="0">desfazer</button>`
+    : `<span class="pago-nao">a receber ${formatPrice(p.total)}</span> <button type="button" class="link-acao" data-pago="1">marcar pago</button>`;
+  return `<div class="pedido-pagamento">💳 ${forma}${detalhe}<br>${estado}</div>`;
 }
 
 function cardHTML(p) {
@@ -118,10 +164,12 @@ function cardHTML(p) {
     </li>`).join('');
 
   const endereco = p.tipo_entrega === 'delivery' && p.endereco_entrega
-    ? `<span class="sub">${escapeHTML(p.endereco_entrega)}</span>` : '';
+    ? `<span class="sub">${escapeHTML(p.endereco_entrega)}${p.bairro_nome ? ` — ${escapeHTML(p.bairro_nome)}` : ''}</span>` : '';
+  const entregador = (p.status === 'saiu_entrega' || p.status === 'entregue') && p.tipo_entrega === 'delivery'
+    ? `<span class="sub">🛵 ${escapeHTML(p.entregador_nome || 'Entregador não informado')}</span>` : '';
 
   return `
-    <article class="pedido-card ${novosIds.has(p.id) ? 'novo' : ''}" data-status="${p.status}" data-id="${p.id}">
+    <article class="pedido-card ${novosIds.has(p.id) ? 'novo' : ''} ${naoVistos.has(p.id) ? 'nao-visto' : ''}" data-status="${p.status}" data-id="${p.id}">
       <div class="pedido-topo">
         <span class="pedido-num">#${p.id}</span>
         ${tipo}${statusTag}
@@ -130,12 +178,14 @@ function cardHTML(p) {
       <div class="pedido-cliente">
         <strong>${escapeHTML(p.cliente_nome || 'Cliente')}</strong>
         <span class="sub">${escapeHTML(formatarTelefone(p.cliente_telefone))}</span>
-        ${endereco}
+        ${endereco}${entregador}
       </div>
       <ul class="pedido-itens">${itens}</ul>
       ${p.observacoes ? `<div class="pedido-obs"><strong>Obs.:</strong> ${escapeHTML(p.observacoes)}</div>` : ''}
+      ${pagamentoHTML(p)}
       <div class="pedido-acoes">
         ${acoes.principal ? `<button type="button" class="btn ${acoes.principal.classe}" data-acao="${acoes.principal.para}">${acoes.principal.label}</button>` : `<span class="pedido-total">${formatPrice(p.total)}</span>`}
+        <button type="button" class="link-acao" data-imprimir title="Imprimir comanda">🖨 Comanda</button>
         ${acoes.voltar ? `<button type="button" class="link-acao" data-acao="${acoes.voltar}" title="Voltar para a etapa anterior">↩ Voltar</button>` : ''}
         ${acoes.cancelar ? `<button type="button" class="link-acao perigo" data-acao="cancelado">Cancelar</button>` : ''}
       </div>
@@ -156,7 +206,8 @@ function pedidosDaColuna(status) {
   );
   if (status === 'entregue') {
     // mais recentes primeiro
-    return lista.sort((a, b) => parseDataApi(b.atualizado_em || b.criado_em) - parseDataApi(a.atualizado_em || a.criado_em));
+    const fim = p => parseDataApi(p.finalizado_em || p.atualizado_em || p.criado_em);
+    return lista.sort((a, b) => fim(b) - fim(a));
   }
   // mais antigos primeiro: quem chegou antes sai antes
   return lista.sort((a, b) => parseDataApi(a.criado_em) - parseDataApi(b.criado_em));
@@ -181,64 +232,218 @@ function render() {
   novosIds.clear();
 
   const novos = pedidosDaColuna('pendente').length;
-  document.title = `${novos ? `(${novos}) ` : ''}Cozinha — BRASA Pizzaria`;
+  document.title = `${naoVistos.size ? '🔔 ' : ''}${novos ? `(${novos}) ` : ''}Cozinha — BRASA Pizzaria`;
+  renderAvisoNovos();
 }
 
-/* ---------- Ações ---------- */
+/* ---------- Ações nos cards ---------- */
 
-document.getElementById('kanban').addEventListener('click', async (event) => {
-  const botao = event.target.closest('[data-acao]');
-  if (!botao) return;
-  const card = botao.closest('.pedido-card');
-  const id = Number(card.dataset.id);
-  const novoStatus = botao.dataset.acao;
-
-  if (novoStatus === 'cancelado' && !confirm(`Cancelar o pedido #${id}? Ele deixa de contar no faturamento.`)) return;
-
+async function mudarStatus(id, corpo, card) {
   card.querySelectorAll('button').forEach(b => (b.disabled = true));
   try {
-    const atualizado = await api(`/cozinha/pedidos/${id}/status`, { method: 'PATCH', body: { status: novoStatus } });
+    const atualizado = await api(`/cozinha/pedidos/${id}/status`, { method: 'PATCH', body: corpo });
     pedidos.set(atualizado.id, atualizado);
     render();
   } catch (e) {
     if (!(e instanceof ErroSessao)) showToast(e.message, 5000);
     card.querySelectorAll('button').forEach(b => (b.disabled = false));
   }
+}
+
+document.getElementById('kanban').addEventListener('click', async (event) => {
+  const card = event.target.closest('.pedido-card');
+  if (!card) return;
+  const id = Number(card.dataset.id);
+  marcarVisto(id); // qualquer toque no card confirma que a cozinha viu o pedido
+
+  if (event.target.closest('[data-imprimir]')) {
+    imprimirComanda(id);
+    return;
+  }
+
+  const pago = event.target.closest('[data-pago]');
+  if (pago) {
+    try {
+      const atualizado = await api(`/cozinha/pedidos/${id}/pagamento`, { method: 'PATCH', body: { pago: pago.dataset.pago === '1' } });
+      pedidos.set(atualizado.id, atualizado);
+      render();
+    } catch (e) {
+      if (!(e instanceof ErroSessao)) showToast(e.message, 5000);
+    }
+    return;
+  }
+
+  const botao = event.target.closest('[data-acao]');
+  if (!botao) return;
+  const novoStatus = botao.dataset.acao;
+  if (novoStatus === 'cancelado' && !confirm(`Cancelar o pedido #${id}? Ele deixa de contar no faturamento.`)) return;
+  if (novoStatus === 'saiu_entrega' && pedidos.get(id).status === 'pronto') {
+    abrirEscolhaEntregador(id, card);
+    return;
+  }
+  mudarStatus(id, { status: novoStatus }, card);
 });
 
-/* ---------- Som de novo pedido (Web Audio, sem arquivo externo) ---------- */
+/* ---------- Entregador ---------- */
+
+const dlgEntregador = document.getElementById('dlgEntregador');
+const formEntregador = document.getElementById('formEntregador');
+
+async function carregarEntregadores() {
+  try { entregadores = await api('/cozinha/entregadores'); } catch (e) { /* lista vazia: sai sem entregador */ }
+}
+
+async function abrirEscolhaEntregador(id, card) {
+  await carregarEntregadores();
+  const p = pedidos.get(id);
+  document.getElementById('entregadorTitulo').textContent = `Pedido #${id} saiu para entrega`;
+  document.getElementById('entregadorSub').textContent = `${p.endereco_entrega || ''}${p.bairro_nome ? ` — ${p.bairro_nome}` : ''}`;
+  const select = formEntregador.elements.entregador;
+  select.innerHTML = (entregadores.length ? '' : '<option value="">Nenhum entregador cadastrado</option>')
+    + entregadores.map(e => `<option value="${e.id}">${escapeHTML(e.nome)}</option>`).join('')
+    + (entregadores.length ? '<option value="">Sem entregador definido</option>' : '');
+  formEntregador.onsubmit = (event) => {
+    event.preventDefault();
+    dlgEntregador.close();
+    const valor = select.value;
+    mudarStatus(id, { status: 'saiu_entrega', entregador_id: valor ? Number(valor) : null }, card);
+  };
+  dlgEntregador.showModal();
+}
+
+document.querySelectorAll('[data-fechar]').forEach(b => b.addEventListener('click', () => b.closest('dialog').close()));
+
+/* ---------- Comanda impressa ---------- */
+
+function imprimirComanda(id) {
+  // iframe escondido: imprime só a comanda (80 mm), sem tirar a cozinha da tela
+  let frame = document.getElementById('frameComanda');
+  if (frame) frame.remove();
+  frame = document.createElement('iframe');
+  frame.id = 'frameComanda';
+  frame.title = 'Comanda';
+  frame.style.cssText = 'position:fixed;width:0;height:0;border:0;right:0;bottom:0;';
+  frame.src = `comanda.html?id=${id}&imprimir=1`;
+  document.body.appendChild(frame);
+}
+
+const btnImprimir = document.getElementById('btnImprimir');
+function renderBotaoImprimir() {
+  btnImprimir.setAttribute('aria-pressed', String(imprimirAuto));
+  btnImprimir.textContent = imprimirAuto ? '🖨 Imprimir ao chegar: ligado' : '🖨 Imprimir ao chegar: desligado';
+}
+btnImprimir.addEventListener('click', () => {
+  imprimirAuto = !imprimirAuto;
+  localStorage.setItem(IMPRIMIR_KEY, imprimirAuto ? '1' : '0');
+  renderBotaoImprimir();
+});
+renderBotaoImprimir();
+
+/* ---------- Som de novo pedido (Web Audio, sem arquivo externo) ----------
+   O navegador só libera áudio depois de um clique/toque na página. Por isso o áudio é
+   "destravado" no primeiro toque (o próprio login conta) e, se ainda estiver travado,
+   aparece o botão "Ativar som". */
 
 let audioCtx = null;
-function tocarAlerta() {
-  if (!somLigado) return;
+
+function destravarAudio() {
   try {
     audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
-    [0, 0.18].forEach((atraso, i) => {
-      const osc = audioCtx.createOscillator();
-      const gain = audioCtx.createGain();
-      osc.frequency.value = i === 0 ? 880 : 1175;
-      gain.gain.setValueAtTime(0.0001, audioCtx.currentTime + atraso);
-      gain.gain.exponentialRampToValueAtTime(0.25, audioCtx.currentTime + atraso + 0.02);
-      gain.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + atraso + 0.16);
-      osc.connect(gain).connect(audioCtx.destination);
-      osc.start(audioCtx.currentTime + atraso);
-      osc.stop(audioCtx.currentTime + atraso + 0.18);
-    });
-  } catch (e) { /* navegador sem Web Audio: segue sem som */ }
+    if (audioCtx.state === 'suspended') audioCtx.resume();
+  } catch (e) { /* navegador sem Web Audio */ }
+  renderBotaoSom();
+}
+['pointerdown', 'keydown'].forEach(ev => document.addEventListener(ev, destravarAudio, { capture: true }));
+
+function audioLiberado() {
+  return audioCtx && audioCtx.state === 'running';
+}
+
+function tocarAlerta() {
+  if (!somLigado || !audioLiberado()) return;
+  const t0 = audioCtx.currentTime;
+  // "ding-dong" duas vezes, alto o bastante para uma cozinha barulhenta
+  [[0, 988], [0.22, 784], [0.6, 988], [0.82, 784]].forEach(([atraso, freq]) => {
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = 'triangle';
+    osc.frequency.value = freq;
+    gain.gain.setValueAtTime(0.0001, t0 + atraso);
+    gain.gain.exponentialRampToValueAtTime(0.5, t0 + atraso + 0.02);
+    gain.gain.exponentialRampToValueAtTime(0.0001, t0 + atraso + 0.35);
+    osc.connect(gain).connect(audioCtx.destination);
+    osc.start(t0 + atraso);
+    osc.stop(t0 + atraso + 0.4);
+  });
 }
 
 const btnSom = document.getElementById('btnSom');
 function renderBotaoSom() {
   btnSom.setAttribute('aria-pressed', String(somLigado));
-  btnSom.textContent = somLigado ? '🔔 Som ligado' : '🔕 Som desligado';
+  if (somLigado && !audioLiberado()) {
+    btnSom.textContent = '🔇 Toque para ativar o som';
+    btnSom.classList.add('chamativo');
+  } else {
+    btnSom.textContent = somLigado ? '🔔 Som ligado' : '🔕 Som desligado';
+    btnSom.classList.remove('chamativo');
+  }
 }
 btnSom.addEventListener('click', () => {
-  somLigado = !somLigado;
-  localStorage.setItem(SOM_KEY, somLigado ? '1' : '0');
+  if (somLigado && !audioLiberado()) {
+    destravarAudio();
+  } else {
+    somLigado = !somLigado;
+    localStorage.setItem(SOM_KEY, somLigado ? '1' : '0');
+  }
   renderBotaoSom();
-  if (somLigado) tocarAlerta(); // teste + libera o áudio no navegador
+  if (somLigado) setTimeout(tocarAlerta, 50); // teste do som
 });
 renderBotaoSom();
+
+// Enquanto houver pedido novo que ninguém tocou, o alarme repete
+setInterval(() => {
+  [...naoVistos].forEach(id => { if (!pedidos.has(id) || pedidos.get(id).status !== 'pendente') naoVistos.delete(id); });
+  if (naoVistos.size) tocarAlerta();
+  renderAvisoNovos();
+}, REPETIR_ALARME_MS);
+
+function marcarVisto(id) {
+  if (naoVistos.delete(id)) render();
+}
+
+function renderAvisoNovos() {
+  const aviso = document.getElementById('avisoNovos');
+  aviso.hidden = naoVistos.size === 0;
+  if (naoVistos.size) {
+    aviso.innerHTML = `<span aria-hidden="true">🔔</span> <b>${naoVistos.size === 1 ? 'Pedido novo' : `${naoVistos.size} pedidos novos`}</b> — o alarme repete até alguém ver.
+      <button type="button" class="btn btn-dark" id="btnCiente">Ciente</button>`;
+    document.getElementById('btnCiente').addEventListener('click', () => { naoVistos.clear(); render(); });
+  }
+}
+
+/* ---------- Pausar pedidos do site ---------- */
+
+const btnPausa = document.getElementById('btnPausa');
+function renderLoja() {
+  btnPausa.textContent = loja.pausado ? '▶ Retomar pedidos do site' : '⏸ Pausar pedidos do site';
+  btnPausa.classList.toggle('chamativo', loja.pausado);
+  const aviso = document.getElementById('avisoLoja');
+  aviso.hidden = loja.aberto;
+  aviso.textContent = loja.aberto ? '' : `Site sem receber pedidos: ${loja.mensagem}`;
+}
+btnPausa.addEventListener('click', async () => {
+  const pausar = !loja.pausado;
+  if (pausar && !confirm('Pausar os pedidos do site? Os clientes verão que a pizzaria está pausada.')) return;
+  btnPausa.disabled = true;
+  try {
+    loja = await api('/cozinha/pausa', { method: 'PUT', body: { pausado: pausar } });
+    renderLoja();
+  } catch (e) {
+    if (!(e instanceof ErroSessao)) showToast(e.message, 5000);
+  } finally {
+    btnPausa.disabled = false;
+  }
+});
 
 /* ---------- Tempo real ---------- */
 
@@ -254,6 +459,11 @@ function tratarMensagem(msg) {
     renderAlertasEstoque(msg.alertas || []);
     return;
   }
+  if (msg.evento === 'loja_atualizada') {
+    loja = msg.loja;
+    renderLoja();
+    return;
+  }
   if (!msg.pedido) return;
 
   const jaExistia = pedidos.has(msg.pedido.id);
@@ -262,8 +472,10 @@ function tratarMensagem(msg) {
 
   if (msg.evento === 'novo_pedido' && !jaExistia) {
     novosIds.add(msg.pedido.id);
+    naoVistos.add(msg.pedido.id);
     tocarAlerta();
     showToast(`Novo pedido #${msg.pedido.id} — ${msg.pedido.cliente_nome || ''}`, 4000);
+    if (imprimirAuto) imprimirComanda(msg.pedido.id);
   }
   render();
 }
@@ -274,6 +486,8 @@ const tempoReal = conectarTempoReal({
     try {
       await carregarFila();
       renderAlertasEstoque(await api('/estoque/alertas'));
+      const resp = await fetch(`${API_URL}/cardapio/loja`);
+      if (resp.ok) { loja = await resp.json(); renderLoja(); }
     } catch (e) { /* o erro já aparece pela api() */ }
   },
   onMensagem: tratarMensagem,
@@ -304,7 +518,10 @@ setInterval(() => pedidos.size && render(), 30000);
 iniciarAreaEquipe({
   titulo: 'Login da cozinha',
   cargos: ['cozinha', 'admin'],
-  onEntrar: () => tempoReal.iniciar(),
+  onEntrar: () => {
+    tempoReal.iniciar();
+    carregarEntregadores();
+  },
 });
 </script>
 

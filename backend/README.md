@@ -58,11 +58,19 @@ Com o servidor rodando, acesse:
 | GET    | `/cardapio/bebidas`                   | não          | Lista bebidas                                |
 | GET    | `/cardapio/ingredientes`              | não          | Lista massas/molhos/coberturas               |
 | GET    | `/cardapio/disponibilidade`           | não          | Bebidas e ingredientes esgotados (por tamanho) |
+| GET    | `/cardapio/montagem`                  | não          | Tamanhos com preço base e ingredientes do "Monte a sua" |
+| GET    | `/cardapio/loja`                      | não          | Aberto/fechado agora (horário e pausa)       |
+| GET    | `/cardapio/bairros`                   | não          | Bairros atendidos e taxa de entrega          |
+| GET    | `/pedidos/acompanhar/{codigo}`        | não          | Acompanhamento do cliente (código do link)   |
+| PATCH  | `/cozinha/pedidos/{id}/pagamento`     | sim          | Marca o pedido como pago / não pago          |
+| GET    | `/cozinha/entregadores`               | sim          | Entregadores ativos                          |
+| PUT    | `/cozinha/pausa`                      | sim          | Pausa/retoma os pedidos do site              |
+| *      | `/gerencial/config/...`               | dono         | Pizzas, bebidas, adicionais, tamanhos, bairros, entregadores, horários |
 | POST   | `/pedidos`                            | não          | Cria um pedido (409 se faltar estoque)       |
-| GET    | `/pedidos/{id}`                       | não          | Consulta status de um pedido                 |
+| GET    | `/pedidos/{id}`                       | sim          | Pedido completo (equipe)                     |
 | POST   | `/auth/login`                         | não          | Login da cozinha/admin, retorna JWT          |
 | GET    | `/cozinha/pedidos`                    | sim          | Lista a fila de pedidos                      |
-| PATCH  | `/cozinha/pedidos/{id}/status`        | sim          | Atualiza status (pendente → em_preparo → …)  |
+| PATCH  | `/cozinha/pedidos/{id}/status`        | sim          | Atualiza status (… → saiu_entrega + entregador → entregue) |
 | WS     | `/ws/cozinha?token=<jwt>`             | sim          | Eventos em tempo real da cozinha             |
 | GET    | `/estoque/itens`                      | sim          | Itens com saldo e status (ok/baixo/zerado)   |
 | GET    | `/estoque/alertas`                    | sim          | Itens abaixo do mínimo                       |

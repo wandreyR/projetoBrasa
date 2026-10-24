@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Acompanhar pedido — BRASA Pizzaria</title>
+<link rel="stylesheet" href="styles.css">
+<style>
+  .acomp { max-width: 640px; margin: 0 auto; }
+  .acomp-card { background: var(--mozzarella); border-radius: var(--radius-l); box-shadow: var(--shadow-card); padding: 28px 24px; margin-bottom: 20px; }
+  .acomp-card h2 { font-family: var(--font-display); font-size: 26px; margin: 4px 0 6px; }
+  .acomp-card .sub { margin: 0; opacity: 0.7; font-size: 14px; }
+  .linha-tempo { list-style: none; margin: 24px 0 0; padding: 0; }
+  .linha-tempo li { position: relative; padding: 0 0 22px 40px; }
+  .linha-tempo li::before { content: ''; position: absolute; left: 11px; top: 26px; bottom: 2px; width: 2px; background: var(--line-dark); }
+  .linha-tempo li:last-child::before { display: none; }
+  .linha-tempo .marca { position: absolute; left: 0; top: 0; width: 24px; height: 24px; border-radius: 50%; border: 2px solid var(--line-dark); background: var(--mozzarella); display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; }
+  .linha-tempo .feito .marca { background: #3F7A3A; border-color: #3F7A3A; color: #fff; }
+  .linha-tempo .feito::before { background: #3F7A3A; }
+  .linha-tempo .atual .marca { background: var(--tomato); border-color: var(--tomato); color: #fff; box-shadow: 0 0 0 5px rgba(193, 57, 31, 0.18); animation: pulsar 1.6s ease-in-out infinite; }
+  @keyframes pulsar { 50% { box-shadow: 0 0 0 9px rgba(193, 57, 31, 0.08); } }
+  .linha-tempo strong { display: block; font-size: 15px; }
+  .linha-tempo .quando { font-size: 12.5px; opacity: 0.65; }
+  .linha-tempo .pendente-passo { opacity: 0.45; }
+  .cancelado { background: rgba(154, 44, 23, 0.1); color: #9A2C17; border-radius: var(--radius-m); padding: 14px 16px; font-weight: 600; margin-top: 18px; }
+  .itens { list-style: none; margin: 0; padding: 0; font-size: 14px; }
+  .itens li { padding: 8px 0; border-bottom: 1px solid var(--line-dark); }
+  .itens li:last-child { border-bottom: none; }
+  .itens .det { display: block; font-size: 12.5px; opacity: 0.65; }
+  .totais { margin-top: 12px; font-size: 14px; }
+  .totais div { display: flex; justify-content: space-between; padding: 3px 0; }
+  .totais .total { font-weight: 700; font-size: 16px; border-top: 1px solid var(--line-dark); margin-top: 6px; padding-top: 8px; }
+  .atualizado { font-size: 12px; opacity: 0.55; text-align: center; }
+</style>
+</head>
+<body>
+
+<header class="brasa-header">
+  <div class="brasa-logo">
+    <span class="mark">BRA<em>SA</em></span>
+    <span class="tagline">forno a lenha desde sempre</span>
+  </div>
+  <div class="header-actions">
+    <nav class="header-nav">
+      <a href="cardapio.html">Cardápio</a>
+      <a href="montar_pizza.html">Monte a sua</a>
+    </nav>
+    <a href="carrinho.html" class="cart-link">
+      Carrinho
+      <span class="cart-badge" data-cart-badge>0</span>
+    </a>
+  </div>
+</header>
+
+<main class="page">
+  <section class="hero" style="margin-bottom: 28px; padding-bottom: 24px;">
+    <p class="eyebrow">Seu pedido</p>
+    <h1>Acompanhar</h1>
+  </section>
+  <div class="acomp" id="conteudo"><p class="atualizado">Carregando…</p></div>
+</main>
+
+<script src="cart.js"></script>
+<script>
+const INTERVALO_MS = 15000; // pergunta à API a cada 15 s enquanto o pedido está em andamento
+const PAGAMENTO = { pix: 'Pix', credito: 'Cartão de crédito', debito: 'Cartão de débito', dinheiro: 'Dinheiro' };
+
+function escapeHTML(texto) {
+  const div = document.createElement('div');
+  div.textContent = texto == null ? '' : String(texto);
+  return div.innerHTML;
+}
+
+function hora(iso) {
+  if (!iso) return '';
+  const d = new Date(/(Z|[+-]\d\d:\d\d)$/.test(iso) ? iso : `${iso}Z`); // API grava em UTC
+  return d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+}
+
+function etapas(p) {
+  const ordem = p.tipo_entrega === 'delivery'
+    ? ['pendente', 'em_preparo', 'pronto', 'saiu_entrega', 'entregue']
+    : ['pendente', 'em_preparo', 'pronto', 'entregue'];
+  const textos = {
+    pendente: ['Pedido recebido', 'A cozinha já viu seu pedido', p.criado_em],
+    em_preparo: ['No forno', 'Sua pizza está sendo preparada'],
+    pronto: p.tipo_entrega === 'delivery' ? ['Pronto', 'Aguardando o entregador'] : ['Pronto para retirada', 'Pode vir buscar no balcão!'],
+    saiu_entrega: ['Saiu para entrega', p.entregador_nome ? `Com ${escapeHTML(p.entregador_nome)}, a caminho` : 'A caminho', p.saiu_entrega_em],
+    entregue: p.tipo_entrega === 'delivery' ? ['Entregue', 'Bom apetite! 🍕', p.finalizado_em] : ['Retirado', 'Bom apetite! 🍕', p.finalizado_em],
+  };
+  const atual = ordem.indexOf(p.status);
+  return ordem.map((st, i) => ({
+    titulo: textos[st][0], texto: textos[st][1], quando: textos[st][2],
+    estado: i < atual || p.status === 'entregue' ? 'feito' : i === atual ? 'atual' : 'pendente-passo',
+  }));
+}
+
+function render(p) {
+  const cancelado = p.status === 'cancelado';
+  const linha = cancelado ? '<div class="cancelado">Este pedido foi cancelado. Em caso de dúvida, fale com a pizzaria.</div>' : `
+    <ol class="linha-tempo">${etapas(p).map((e, i) => `
+      <li class="${e.estado}">
+        <span class="marca">${e.estado === 'feito' ? '✓' : i + 1}</span>
+        <strong>${e.titulo}</strong>
+        <span class="quando">${e.estado === 'pendente-passo' ? '' : e.texto}${e.quando && e.estado !== 'pendente-passo' ? ` · ${hora(e.quando)}` : ''}</span>
+      </li>`).join('')}
+    </ol>`;
+  const pagamento = `${PAGAMENTO[p.forma_pagamento] || 'A combinar'}${p.troco_para ? ` · troco para ${formatPrice(p.troco_para)}` : ''}${p.pago ? ' · pago ✓' : ''}`;
+  document.getElementById('conteudo').innerHTML = `
+    <div class="acomp-card">
+      <p class="eyebrow">Pedido nº ${p.id}</p>
+      <h2>Olá, ${escapeHTML(p.cliente_primeiro_nome)}!</h2>
+      <p class="sub">${p.tipo_entrega === 'delivery' ? `Entrega em ${escapeHTML(p.bairro_nome || '')}` : 'Retirada no balcão'}</p>
+      ${linha}
+    </div>
+    <div class="acomp-card">
+      <ul class="itens">${p.itens.map(i => `
+        <li>${i.quantidade}× ${escapeHTML(i.nome)}${i.tamanho ? ` (${i.tamanho})` : ''}
+          ${i.detalhes && i.nome === 'Pizza montada' ? `<span class="det">${escapeHTML(i.detalhes)}</span>` : ''}</li>`).join('')}
+      </ul>
+      <div class="totais">
+        <div><span>Subtotal</span><span>${formatPrice(p.subtotal)}</span></div>
+        <div><span>Entrega</span><span>${p.taxa_entrega ? formatPrice(p.taxa_entrega) : 'Grátis'}</span></div>
+        <div class="total"><span>Total</span><span>${formatPrice(p.total)}</span></div>
+        <div><span>Pagamento</span><span>${pagamento}</span></div>
+      </div>
+    </div>
+    <p class="atualizado">${['entregue', 'cancelado'].includes(p.status) ? 'Pedido finalizado.' : `Atualiza sozinho · última vez às ${new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`}</p>`;
+}
+
+async function atualizar(codigo) {
+  try {
+    const resp = await fetch(`${API_URL}/pedidos/acompanhar/${encodeURIComponent(codigo)}`);
+    if (resp.status === 404) {
+      document.getElementById('conteudo').innerHTML = '<div class="acomp-card"><h2>Pedido não encontrado</h2><p class="sub">Confira se o link está completo.</p></div>';
+      return;
+    }
+    const pedido = await resp.json();
+    render(pedido);
+    if (!['entregue', 'cancelado'].includes(pedido.status)) setTimeout(() => atualizar(codigo), INTERVALO_MS);
+  } catch (e) {
+    // sem conexão: tenta de novo mais tarde sem apagar o que já está na tela
+    setTimeout(() => atualizar(codigo), INTERVALO_MS);
+  }
+}
+
+const codigo = new URLSearchParams(location.search).get('c') || (getUltimoPedido() || {}).codigo;
+if (codigo) {
+  atualizar(codigo);
+} else {
+  document.getElementById('conteudo').innerHTML = '<div class="acomp-card"><h2>Nenhum pedido recente</h2><p class="sub">Use o link que aparece depois de confirmar o pedido.</p></div>';
+}
+</script>
+
+</body>
+</html>

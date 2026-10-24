@@ -14,3 +14,6 @@ venv/
 .idea/
 .DS_Store
 Thumbs.db
+
+# Backups do banco (dados de clientes) — nunca versionar
+backups/

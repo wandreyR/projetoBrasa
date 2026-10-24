@@ -95,9 +95,68 @@ function showToast(message, duracaoMs = 2200) {
 const API_URL =
   window.BRASA_API_URL || `${location.protocol === 'https:' ? 'https:' : 'http:'}//${location.hostname || 'localhost'}:8002`;
 
-const TAXA_ENTREGA = 6; // mesmo valor de TAXA_ENTREGA_PADRAO no backend
 const TIMEOUT_PEDIDO_MS = 15000;
 const ULTIMO_PEDIDO_KEY = 'brasa_ultimo_pedido';
+const HORAS_LINK_ACOMPANHAR = 12; // por quanto tempo o topo do site mostra "Seu pedido #N"
+
+// GET simples na API pública (cardápio, loja, bairros…)
+async function apiPublica(caminho) {
+  const resp = await fetch(`${API_URL}${caminho}`);
+  if (!resp.ok) throw new Error(`Erro ao carregar ${caminho} (HTTP ${resp.status})`);
+  return resp.json();
+}
+
+/* ---------- Loja aberta / fechada ---------- */
+
+let statusLoja = { aberto: true, mensagem: '' };
+
+// Mostra uma faixa no topo da página quando a pizzaria está fechada ou pausada
+async function carregarStatusLoja() {
+  try {
+    statusLoja = await apiPublica('/cardapio/loja');
+  } catch (e) {
+    return statusLoja; // sem API: não bloqueia nada aqui; o pedido é validado no servidor
+  }
+  let faixa = document.querySelector('.aviso-loja');
+  if (!statusLoja.aberto) {
+    if (!faixa) {
+      faixa = document.createElement('div');
+      faixa.className = 'aviso-loja';
+      faixa.setAttribute('role', 'status');
+      document.querySelector('.brasa-header').insertAdjacentElement('afterend', faixa);
+    }
+    faixa.innerHTML = `<span aria-hidden="true">🕒</span> ${statusLoja.mensagem} Você pode montar o carrinho e pedir quando abrirmos.`;
+  } else if (faixa) {
+    faixa.remove();
+  }
+  document.dispatchEvent(new CustomEvent('brasa:loja', { detail: statusLoja }));
+  return statusLoja;
+}
+
+/* ---------- Último pedido (link de acompanhamento no topo) ---------- */
+
+function getUltimoPedido() {
+  try {
+    const p = JSON.parse(localStorage.getItem(ULTIMO_PEDIDO_KEY));
+    if (!p || !p.codigo) return null;
+    if (Date.now() - (p.quando || 0) > HORAS_LINK_ACOMPANHAR * 3600 * 1000) return null;
+    return p;
+  } catch (e) {
+    return null;
+  }
+}
+
+function linkAcompanhar(codigo) {
+  return `acompanhar.html?c=${encodeURIComponent(codigo)}`;
+}
+
+function renderLinkUltimoPedido() {
+  const p = getUltimoPedido();
+  const carrinho = document.querySelector('.cart-link');
+  if (!p || !carrinho || document.querySelector('.acompanhar-link')) return;
+  carrinho.insertAdjacentHTML('beforebegin',
+    `<a class="acompanhar-link" href="${linkAcompanhar(p.codigo)}">Pedido #${p.id}</a>`);
+}
 
 // O cardápio salva bebidas como tipo 'cardapio' sem tamanho; a API diferencia.
 function tipoItemApi(item) {
@@ -121,16 +180,18 @@ function montarPayloadPedido(cliente) {
     cliente_telefone: cliente.telefone,
     tipo_entrega: cliente.tipoEntrega,
     endereco_entrega: cliente.tipoEntrega === 'delivery' ? cliente.endereco : null,
+    bairro_id: cliente.tipoEntrega === 'delivery' ? Number(cliente.bairroId) || null : null,
+    forma_pagamento: cliente.formaPagamento,
+    troco_para: cliente.formaPagamento === 'dinheiro' && cliente.trocoPara ? Number(cliente.trocoPara) : null,
     observacoes: cliente.observacoes || null,
     itens: getCart().map((item) => {
       const tipo = tipoItemApi(item);
       return {
         tipo,
-        // pizza do cardápio → slug; bebida → nome. O backend usa isso para buscar o preço oficial.
-        ref: tipo === 'cardapio' ? String(item.id) : tipo === 'bebida' ? item.nome : null,
+        // slug da pizza/bebida: o backend busca o preço oficial (o preço do navegador não é enviado)
+        ref: tipo === 'custom' ? null : String(item.id),
         nome: item.nome,
         tamanho: item.tamanho || null,
-        preco_unitario: item.precoUnit,
         quantidade: item.qtd,
         detalhes: item.detalhes || null,
         ingredientes: tipo === 'custom' ? ingredientesDaPizza(item) : null,
@@ -179,7 +240,8 @@ async function enviarPedido(payload) {
  * Intercepta o submit do formulário de checkout ("Confirmar pedido"),
  * envia o carrinho para POST /pedidos e limpa o carrinho em caso de sucesso.
  *
- * form: <form> com campos name="nome", "telefone", "tipo_entrega", "endereco", "observacoes"
+ * form: <form> com campos name="nome", "telefone", "tipo_entrega", "endereco", "bairro_id",
+ *       "forma_pagamento", "troco_para", "observacoes"
  * onSuccess(pedido): chamado com a resposta da API (PedidoOut)
  */
 function initCheckout(form, { onSuccess } = {}) {
@@ -204,6 +266,9 @@ function initCheckout(form, { onSuccess } = {}) {
       telefone: String(dados.get('telefone') || '').trim(),
       tipoEntrega: dados.get('tipo_entrega'),
       endereco: String(dados.get('endereco') || '').trim(),
+      bairroId: dados.get('bairro_id'),
+      formaPagamento: dados.get('forma_pagamento'),
+      trocoPara: String(dados.get('troco_para') || '').replace(',', '.'),
       observacoes: String(dados.get('observacoes') || '').trim(),
     });
 
@@ -215,7 +280,9 @@ function initCheckout(form, { onSuccess } = {}) {
 
     try {
       const pedido = await enviarPedido(payload);
-      localStorage.setItem(ULTIMO_PEDIDO_KEY, JSON.stringify({ id: pedido.id, total: pedido.total }));
+      localStorage.setItem(ULTIMO_PEDIDO_KEY, JSON.stringify({
+        id: pedido.id, total: pedido.total, codigo: pedido.codigo_acompanhamento, quando: Date.now(),
+      }));
       saveCart([]);
       if (onSuccess) onSuccess(pedido);
     } catch (e) {
@@ -230,4 +297,7 @@ function initCheckout(form, { onSuccess } = {}) {
   });
 }
 
-document.addEventListener('DOMContentLoaded', renderCartBadge);
+document.addEventListener('DOMContentLoaded', () => {
+  renderCartBadge();
+  renderLinkUltimoPedido();
+});

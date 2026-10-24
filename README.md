@@ -44,9 +44,11 @@ Isso vai:
 |-----------------------------|----------------------------------------|-----------------------------|
 | Cardápio                    | http://localhost:8080/cardapio.html   | Clientes                    |
 | Carrinho / finalizar pedido | http://localhost:8080/carrinho.html   | Clientes                    |
+| Acompanhar pedido           | link mostrado após confirmar          | Clientes                    |
 | Cozinha (Kanban ao vivo)    | http://localhost:8080/cozinha.html    | Funcionários e dono         |
 | Estoque                     | http://localhost:8080/estoque.html    | Funcionários e dono         |
 | Gerencial                   | http://localhost:8080/gerencial.html  | Somente o dono              |
+| Configurações               | http://localhost:8080/configuracoes.html | Somente o dono (cardápio, preços, bairros, entregadores, horário) |
 | Backend (Swagger)           | http://localhost:8002/docs            | Desenvolvimento             |
 | MySQL (host)                | `localhost:3307` (usuário `root`)     | Desenvolvimento             |
 
@@ -55,7 +57,7 @@ Isso vai:
 | E-mail              | Cargo     | Acesso                   |
 |---------------------|-----------|--------------------------|
 | `cozinha@brasa.com` | `cozinha` | Tela da cozinha          |
-| `dono@brasa.com`    | `admin`   | Cozinha + gerencial      |
+| `dono@brasa.com`    | `admin`   | Cozinha + gerencial + configurações |
 
 ⚠️ Troque essas senhas antes de usar fora do ambiente local.
 
@@ -82,11 +84,57 @@ caso prefira não usar Docker no dia a dia.
 
 ## Fluxo do pedido
 
-1. Cliente monta o carrinho e confirma em `carrinho.html` → `POST /pedidos`
-   (o backend recalcula o preço das pizzas do cardápio e bebidas a partir do banco)
-2. A cozinha recebe o pedido na hora via WebSocket (`/ws/cozinha?token=<jwt>`) com alerta sonoro
-3. Kanban: **Novos → Em preparo → Prontos → Entregues** (entregue ao motoboy ou retirado pelo cliente)
-4. O gerencial soma o faturamento dos pedidos não cancelados e compara com as despesas lançadas
+1. O cliente monta o carrinho. Cardápio, tamanhos e adicionais vêm do banco (o dono muda em
+   **Configurações**); no "Monte a sua" a pizza é montada na tela: a massa abre, o molho espalha e
+   cada ingrediente cai em pedaços — o botão **▶ Ver a montagem** repete tudo e termina no forno
+2. No carrinho escolhe **entrega** (bairro → taxa) ou **retirada** e a **forma de pagamento**
+   (Pix, crédito, débito ou dinheiro com troco). O pagamento é feito na entrega/retirada
+3. `POST /pedidos`: o backend **recalcula todos os preços** (inclusive a pizza montada), confere o
+   **horário de funcionamento**/pausa e o **estoque**, e devolve um **link de acompanhamento**
+4. A cozinha recebe o pedido na hora (WebSocket) com **alarme que repete** até alguém ver,
+   opcionalmente **imprime a comanda** (80 mm) e o pedido anda pelo Kanban:
+   **Novos → Em preparo → Prontos → Saiu p/ entrega (com o entregador) → Finalizados**
+5. O cliente acompanha as etapas pelo link (atualiza sozinho). A cozinha marca **pago** quando recebe
+6. O gerencial mostra faturamento, despesas, **formas de pagamento**, **valor a receber** e
+   **entregas por entregador** (para acertar com os motoboys)
+
+A cozinha pode **pausar os pedidos do site** quando estiver sobrecarregada.
+
+## Banco de dados e migrações (Alembic)
+
+O esquema do banco é versionado em `backend/migrations/`. **O backend aplica as migrações
+sozinho ao iniciar** — não é preciso rodar nada no Docker. Um banco criado antes do Alembic é
+reconhecido e atualizado sem perder dados.
+
+Ao mudar um model (`backend/app/models.py`):
+
+```bash
+cd backend
+alembic revision --autogenerate -m "o que mudou"   # gera a migração; revise o arquivo gerado
+alembic upgrade head                               # aplica (ou reinicie o backend)
+```
+
+## Testes
+
+```bash
+cd backend
+pip install -r requirements-dev.txt
+python -m pytest
+```
+
+Cada arquivo de teste roda num banco SQLite em memória criado pelas mesmas migrações de produção.
+
+## Backup do banco
+
+O serviço `backup` do Docker Compose faz um dump do MySQL **ao subir e todo dia às 04:00**,
+na pasta `backups/` do projeto (fora do Git), e apaga os com mais de 14 dias.
+
+```bash
+docker compose exec backup /backup.sh                                    # backup agora
+docker compose exec backup /restaurar.sh brasa_2026-10-23_0400.sql.gz    # restaura (apaga os dados atuais!)
+```
+
+⚠️ A pasta `backups/` fica no mesmo computador: copie os arquivos para a nuvem ou um HD externo.
 
 ## Estoque
 
@@ -119,8 +167,7 @@ caso prefira não usar Docker no dia a dia.
   `creditos.json` e rode `docker compose up --build -d frontend`
 
 ## Próximos passos
-- Conectar o cardápio e o "Monte sua pizza" às rotas reais do backend (hoje ainda
-  usam dados fixos em JavaScript)
-- Levar para o banco os preços base da pizza montada (hoje o preço dela ainda vem do front)
-- Adicionar um proxy reverso (Nginx ou Traefik) na frente de frontend + backend,
-  para que o frontend chame `/api/...` sem se preocupar com host/porta do backend
+- Trocar as senhas padrão e criar uma tela para cadastrar/desativar funcionários
+- Pagamento online (Pix com QR Code / cartão) — exige conta num provedor de pagamento
+- Publicar na internet com HTTPS e um proxy reverso servindo frontend + backend (`/api/...`)
+- Copiar os backups automaticamente para a nuvem
