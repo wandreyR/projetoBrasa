@@ -3,6 +3,7 @@ from pathlib import Path
 
 from alembic import command
 from alembic.config import Config
+from alembic.script import ScriptDirectory
 from sqlalchemy import create_engine, inspect, text
 
 from app import database
@@ -48,7 +49,8 @@ def test_adota_banco_antigo_e_preenche_dados(tmp_path):
                        "VALUES (1, 'retirada', 'pendente', 10, 0, 10)"))
     migrar_banco()
     with engine.connect() as c:
-        assert c.execute(text("SELECT version_num FROM alembic_version")).scalar() == "0003"
+        ultima = ScriptDirectory.from_config(cfg).get_current_head()
+        assert c.execute(text("SELECT version_num FROM alembic_version")).scalar() == ultima
         assert c.execute(text("SELECT slug FROM bebidas")).scalar() == "guarana"
         codigo, pago = c.execute(text("SELECT codigo_acompanhamento, pago FROM pedidos")).one()
         assert len(codigo) >= 16 and pago == 1  # pedidos antigos contam como pagos

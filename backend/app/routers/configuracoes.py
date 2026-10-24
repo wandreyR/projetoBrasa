@@ -9,6 +9,7 @@ from .. import models, schemas
 from ..auth import exigir_admin
 from ..database import get_db
 from ..loja_service import status_loja
+from ..pix_service import ChavePixInvalida, ler_config, salvar_config
 
 router = APIRouter(prefix="/gerencial/config", tags=["Configurações"], dependencies=[Depends(exigir_admin)])
 
@@ -174,3 +175,25 @@ def salvar_horarios(dados: List[schemas.HorarioDia], db: Session = Depends(get_d
         db.add(h)
     db.commit()
     return status_loja(db)
+
+
+# ---------------------------------------------------------------------
+# Pix
+# ---------------------------------------------------------------------
+
+@router.get("/pix", response_model=schemas.PixConfig)
+def obter_pix(db: Session = Depends(get_db)):
+    cfg = ler_config(db)
+    return schemas.PixConfig(tipo=cfg["tipo"] or "telefone", chave=cfg["chave"], nome=cfg["nome"], cidade=cfg["cidade"])
+
+
+@router.put("/pix", response_model=schemas.PixConfig)
+def salvar_pix(dados: schemas.PixConfig, db: Session = Depends(get_db)):
+    if dados.chave and (len(dados.nome) < 2 or len(dados.cidade) < 2):
+        raise HTTPException(status_code=422, detail="Informe o nome de quem recebe e a cidade (aparecem no app do banco)")
+    try:
+        salvar_config(db, dados.tipo, dados.chave, dados.nome, dados.cidade)
+    except ChavePixInvalida as e:
+        raise HTTPException(status_code=422, detail=str(e))
+    db.commit()
+    return obter_pix(db)

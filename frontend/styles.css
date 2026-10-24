@@ -926,3 +926,38 @@ img, svg { display: block; max-width: 100%; }
 .pizza-card .foto.sem-foto {
   background: radial-gradient(circle at 35% 30%, rgba(212, 160, 23, 0.35), transparent 55%), var(--crust-dark);
 }
+
+/* ---------- Pix (cliente) ---------- */
+
+.pix-previa { background: var(--semolina); border-radius: var(--radius-m); padding: 14px 16px; margin: 4px 0 16px; }
+.pix-previa[hidden] { display: none; }
+.pix-rotulo { font-size: 13px; font-weight: 600; margin: 0 0 6px; }
+.pix-copia { display: flex; gap: 8px; }
+.pix-copia input {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  padding: 10px 12px;
+  border-radius: var(--radius-s);
+  border: 1px solid var(--line-dark);
+  background: var(--mozzarella);
+  color: var(--crust-dark);
+}
+.dica-pix { font-size: 12.5px; opacity: 0.75; margin: 8px 0 0; line-height: 1.5; }
+
+.painel-pix-alvo { text-align: left; max-width: 560px; margin: 0 auto 20px; }
+.painel-pix { background: var(--mozzarella); border: 2px solid #32BCAD; border-radius: var(--radius-m); padding: 18px; text-align: left; }
+.painel-pix.pago { border-color: var(--basil); color: var(--basil); }
+.painel-pix h3 { font-family: var(--font-display); font-size: 20px; margin: 0 0 4px; }
+.pix-passos { font-size: 13px; opacity: 0.75; margin: 0 0 14px; }
+.pix-grade { display: grid; grid-template-columns: 1fr; gap: 16px; align-items: center; }
+@media (min-width: 560px) { .pix-grade { grid-template-columns: 180px 1fr; } }
+.pix-qr { background: #fff; border-radius: var(--radius-s); padding: 6px; width: 180px; max-width: 100%; margin: 0 auto; }
+.pix-qr svg { width: 100%; height: auto; display: block; }
+.pix-chave { font-size: 13px; margin: 10px 0 0; line-height: 1.6; overflow-wrap: anywhere; }
+.link-copiar { font-size: 12px; text-decoration: underline; opacity: 0.7; margin-left: 4px; }
+.pix-comprovante { margin-top: 16px; padding-top: 14px; border-top: 1px dashed var(--line-dark); display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.pix-comprovante .pix-rotulo { width: 100%; }
+.botao-arquivo { cursor: pointer; }
+.pix-status { font-size: 13px; }

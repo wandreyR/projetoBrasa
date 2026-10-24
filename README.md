@@ -134,6 +134,12 @@ docker compose exec backup /backup.sh                                    # backu
 docker compose exec backup /restaurar.sh brasa_2026-10-23_0400.sql.gz    # restaura (apaga os dados atuais!)
 ```
 
+Os **comprovantes do Pix** enviados pelos clientes ficam no volume `brasa_comprovantes` e entram no
+backup como `comprovantes_<data>.tar.gz`.
+
+> No **Git Bash** (Windows), coloque `MSYS_NO_PATHCONV=1` antes do comando
+> (`MSYS_NO_PATHCONV=1 docker compose exec backup /backup.sh`); no PowerShell funciona direto.
+
 ⚠️ A pasta `backups/` fica no mesmo computador: copie os arquivos para a nuvem ou um HD externo.
 
 ## Estoque

@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 from .. import models, schemas
 from ..database import get_db
 from ..loja_service import status_loja
+from ..pix_service import ler_config, pix_disponivel
 
 router = APIRouter(prefix="/cardapio", tags=["Cardápio"])
 
@@ -60,6 +61,15 @@ def montagem(db: Session = Depends(get_db)):
 def loja(db: Session = Depends(get_db)):
     """Aberto ou fechado agora (horário de funcionamento e pausa da cozinha)."""
     return status_loja(db)
+
+
+@router.get("/pix", response_model=schemas.PixPublicoOut)
+def pix(db: Session = Depends(get_db)):
+    """Chave Pix da pizzaria (mostrada no carrinho quando o cliente escolhe Pix)."""
+    if not pix_disponivel(db):
+        return schemas.PixPublicoOut(disponivel=False)
+    cfg = ler_config(db)
+    return schemas.PixPublicoOut(disponivel=True, chave=cfg["chave"], nome=cfg["nome"])
 
 
 @router.get("/bairros", response_model=List[schemas.BairroOut])

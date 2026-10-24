@@ -96,6 +96,7 @@ function etapas(p) {
 }
 
 function render(p) {
+  const pixAnterior = document.getElementById('cartaoPix');
   const cancelado = p.status === 'cancelado';
   const linha = cancelado ? '<div class="cancelado">Este pedido foi cancelado. Em caso de dúvida, fale com a pizzaria.</div>' : `
     <ol class="linha-tempo">${etapas(p).map((e, i) => `
@@ -113,6 +114,7 @@ function render(p) {
       <p class="sub">${p.tipo_entrega === 'delivery' ? `Entrega em ${escapeHTML(p.bairro_nome || '')}` : 'Retirada no balcão'}</p>
       ${linha}
     </div>
+    ${p.forma_pagamento === 'pix' && p.status !== 'cancelado' ? '<div class="acomp-card" id="cartaoPix"></div>' : ''}
     <div class="acomp-card">
       <ul class="itens">${p.itens.map(i => `
         <li>${i.quantidade}× ${escapeHTML(i.nome)}${i.tamanho ? ` (${i.tamanho})` : ''}
@@ -126,6 +128,16 @@ function render(p) {
       </div>
     </div>
     <p class="atualizado">${['entregue', 'cancelado'].includes(p.status) ? 'Pedido finalizado.' : `Atualiza sozinho · última vez às ${new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`}</p>`;
+  const cartaoPix = document.getElementById('cartaoPix');
+  if (cartaoPix) {
+    const chave = `${p.pago}|${p.comprovante_enviado}`;
+    if (pixAnterior && pixAnterior.dataset.estado === chave) {
+      cartaoPix.replaceWith(pixAnterior); // nada mudou no pagamento: mantém o painel (e um envio em andamento)
+    } else {
+      cartaoPix.dataset.estado = chave;
+      renderPainelPix(cartaoPix, codigo, { comprovanteEnviado: p.comprovante_enviado, pago: p.pago });
+    }
+  }
 }
 
 async function atualizar(codigo) {

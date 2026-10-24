@@ -146,7 +146,14 @@ function pagamentoHTML(p) {
   const estado = p.pago
     ? `<span class="pago-ok">✓ pago</span> <button type="button" class="link-acao" data-pago="0">desfazer</button>`
     : `<span class="pago-nao">a receber ${formatPrice(p.total)}</span> <button type="button" class="link-acao" data-pago="1">marcar pago</button>`;
-  return `<div class="pedido-pagamento">💳 ${forma}${detalhe}<br>${estado}</div>`;
+  let comprovante = '';
+  if (p.forma_pagamento === 'pix') {
+    comprovante = p.comprovante_enviado_em
+      ? `<br>📎 <button type="button" class="link-acao" data-comprovante>ver comprovante</button>
+         <span class="comprovante-hora">enviado às ${parseDataApi(p.comprovante_enviado_em).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</span>`
+      : (p.pago ? '' : '<br><span class="comprovante-hora">aguardando comprovante do cliente</span>');
+  }
+  return `<div class="pedido-pagamento">💳 ${forma}${detalhe}<br>${estado}${comprovante}</div>`;
 }
 
 function cardHTML(p) {
@@ -261,6 +268,11 @@ document.getElementById('kanban').addEventListener('click', async (event) => {
     return;
   }
 
+  if (event.target.closest('[data-comprovante]')) {
+    abrirComprovante(id);
+    return;
+  }
+
   const pago = event.target.closest('[data-pago]');
   if (pago) {
     try {
@@ -283,6 +295,26 @@ document.getElementById('kanban').addEventListener('click', async (event) => {
   }
   mudarStatus(id, { status: novoStatus }, card);
 });
+
+/* ---------- Comprovante do Pix ---------- */
+
+async function abrirComprovante(id) {
+  // a janela abre já no clique (senão o navegador bloqueia como pop-up); o arquivo chega depois
+  const janela = window.open('', '_blank');
+  try {
+    const resp = await fetch(`${API_URL}/cozinha/pedidos/${id}/comprovante`, {
+      headers: { Authorization: `Bearer ${getSessao().token}` },
+    });
+    if (!resp.ok) throw new Error(resp.status === 404 ? 'Comprovante não encontrado' : `Erro ${resp.status}`);
+    const url = URL.createObjectURL(await resp.blob());
+    if (janela) janela.location.href = url;
+    else window.location.href = url;
+    setTimeout(() => URL.revokeObjectURL(url), 60000);
+  } catch (e) {
+    if (janela) janela.close();
+    showToast(e.message, 5000);
+  }
+}
 
 /* ---------- Entregador ---------- */
 
@@ -469,6 +501,11 @@ function tratarMensagem(msg) {
   const jaExistia = pedidos.has(msg.pedido.id);
   // o evento do WebSocket traz um resumo; mescla para não perder campos da listagem
   pedidos.set(msg.pedido.id, { ...(pedidos.get(msg.pedido.id) || {}), ...msg.pedido });
+
+  if (msg.evento === 'comprovante_recebido') {
+    tocarAlerta();
+    showToast(`📎 Comprovante do Pix recebido — pedido #${msg.pedido.id}`, 5000);
+  }
 
   if (msg.evento === 'novo_pedido' && !jaExistia) {
     novosIds.add(msg.pedido.id);

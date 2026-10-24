@@ -78,6 +78,29 @@ class LojaStatusOut(BaseModel):
     mensagem: str
 
 
+class PixPublicoOut(BaseModel):
+    disponivel: bool
+    chave: str = ""
+    nome: str = ""
+
+
+class PixPedidoOut(BaseModel):
+    chave: str
+    nome: str
+    valor: float
+    copia_e_cola: str
+    qr_svg: str
+
+
+class PixConfig(BaseModel):
+    model_config = ConfigDict(str_strip_whitespace=True)
+
+    tipo: Literal["cpf", "cnpj", "telefone", "email", "aleatoria"] = "telefone"
+    chave: str = Field(default="", max_length=77)   # vazio = Pix desligado no site
+    nome: str = Field(default="", max_length=60)    # nome de quem recebe (aparece no app do banco)
+    cidade: str = Field(default="", max_length=40)
+
+
 class BairroOut(BaseModel):
     id: int
     nome: str
@@ -191,6 +214,7 @@ class PedidoOut(BaseModel):
     entregador_nome: Optional[str] = None
     saiu_entrega_em: Optional[datetime] = None
     finalizado_em: Optional[datetime] = None
+    comprovante_enviado_em: Optional[datetime] = None
 
     class Config:
         from_attributes = True
@@ -221,6 +245,7 @@ class AcompanhamentoOut(BaseModel):
     atualizado_em: Optional[datetime] = None
     saiu_entrega_em: Optional[datetime] = None
     finalizado_em: Optional[datetime] = None
+    comprovante_enviado: bool = False
     itens: List[AcompanhamentoItemOut]
 
 

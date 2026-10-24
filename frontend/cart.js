@@ -301,3 +301,108 @@ document.addEventListener('DOMContentLoaded', () => {
   renderCartBadge();
   renderLinkUltimoPedido();
 });
+
+/* ============================================
+   Pix: QR Code, "copia e cola" e envio do comprovante
+   (usado na confirmação do pedido e na página de acompanhamento)
+   ============================================ */
+
+const LIMITE_COMPROVANTE = 5 * 1024 * 1024;
+const TIPOS_COMPROVANTE = ['image/jpeg', 'image/png', 'image/webp', 'application/pdf'];
+
+function escaparPix(texto) {
+  const div = document.createElement('div');
+  div.textContent = texto == null ? '' : String(texto);
+  return div.innerHTML;
+}
+
+async function copiarTexto(texto) {
+  try {
+    await navigator.clipboard.writeText(texto);
+    return true;
+  } catch (e) {
+    // navegador sem permissão de área de transferência: seleciona para copiar à mão
+    return false;
+  }
+}
+
+/**
+ * alvo: elemento onde o painel é desenhado; codigo: código de acompanhamento do pedido
+ * estado: { comprovanteEnviado, pago } — para mostrar "já enviado"/"pagamento confirmado"
+ */
+async function renderPainelPix(alvo, codigo, estado = {}) {
+  if (estado.pago) {
+    alvo.innerHTML = '<div class="painel-pix pago"><b>✓ Pagamento Pix confirmado pela pizzaria.</b></div>';
+    return;
+  }
+  alvo.innerHTML = '<div class="painel-pix"><p>Carregando o Pix…</p></div>';
+  let pix;
+  try {
+    pix = await apiPublica(`/pedidos/acompanhar/${encodeURIComponent(codigo)}/pix`);
+  } catch (e) {
+    alvo.innerHTML = '<div class="painel-pix"><p>Não foi possível carregar o Pix. Fale com a pizzaria pelo telefone.</p></div>';
+    return;
+  }
+  const svg = pix.qr_svg.replace(/<\?xml[^>]*>/, ''); // SVG gerado pelo nosso servidor
+  alvo.innerHTML = `
+    <div class="painel-pix">
+      <h3>Pague com Pix: ${formatPrice(pix.valor)}</h3>
+      <p class="pix-passos">Abra o app do seu banco, escolha <b>Pix → Ler QR Code</b> ou <b>Pix copia e cola</b>.</p>
+      <div class="pix-grade">
+        <div class="pix-qr" role="img" aria-label="QR Code do Pix">${svg}</div>
+        <div class="pix-dados">
+          <label class="pix-rotulo" for="pixCopia">Pix copia e cola</label>
+          <div class="pix-copia">
+            <input id="pixCopia" type="text" readonly value="${escaparPix(pix.copia_e_cola)}">
+            <button type="button" class="btn btn-dark" data-copiar="${escaparPix(pix.copia_e_cola)}">Copiar</button>
+          </div>
+          <p class="pix-chave">Chave: <b>${escaparPix(pix.chave)}</b>
+            <button type="button" class="link-copiar" data-copiar="${escaparPix(pix.chave)}">copiar chave</button><br>
+            Favorecido: ${escaparPix(pix.nome)}</p>
+        </div>
+      </div>
+      <div class="pix-comprovante">
+        <p class="pix-rotulo">Já pagou? Envie o comprovante para a pizzaria:</p>
+        <label class="btn btn-primary botao-arquivo">
+          📎 ${estado.comprovanteEnviado ? 'Enviar outro comprovante' : 'Enviar comprovante'}
+          <input type="file" accept="image/jpeg,image/png,image/webp,application/pdf" hidden>
+        </label>
+        <span class="pix-status" role="status">${estado.comprovanteEnviado ? '✓ Comprovante recebido — a pizzaria vai conferir.' : 'Foto ou PDF, até 5 MB.'}</span>
+      </div>
+    </div>`;
+
+  alvo.querySelectorAll('[data-copiar]').forEach(btn => btn.addEventListener('click', async () => {
+    const copiou = await copiarTexto(btn.dataset.copiar);
+    if (!copiou) alvo.querySelector('#pixCopia').select();
+    showToast(copiou ? 'Copiado! Cole no app do banco.' : 'Selecionado: use Ctrl+C para copiar');
+  }));
+
+  const campo = alvo.querySelector('input[type="file"]');
+  const status = alvo.querySelector('.pix-status');
+  campo.addEventListener('change', async () => {
+    const arquivo = campo.files[0];
+    campo.value = '';
+    if (!arquivo) return;
+    if (!TIPOS_COMPROVANTE.includes(arquivo.type)) {
+      status.textContent = 'Envie uma foto (JPG, PNG ou WEBP) ou um PDF.';
+      return;
+    }
+    if (arquivo.size > LIMITE_COMPROVANTE) {
+      status.textContent = 'Arquivo muito grande: o limite é 5 MB.';
+      return;
+    }
+    status.textContent = 'Enviando…';
+    const dados = new FormData();
+    dados.append('arquivo', arquivo);
+    try {
+      const resp = await fetch(`${API_URL}/pedidos/acompanhar/${encodeURIComponent(codigo)}/comprovante`, { method: 'POST', body: dados });
+      const corpo = await resp.json().catch(() => null);
+      if (!resp.ok) throw new Error(mensagemDeErroApi(corpo, resp.status));
+      status.textContent = '✓ Comprovante recebido — a pizzaria vai conferir.';
+      alvo.querySelector('.botao-arquivo').firstChild.textContent = '📎 Enviar outro comprovante ';
+      showToast('Comprovante enviado para a pizzaria');
+    } catch (e) {
+      status.textContent = e.message === 'Failed to fetch' ? 'Sem conexão. Tente de novo.' : e.message;
+    }
+  });
+}

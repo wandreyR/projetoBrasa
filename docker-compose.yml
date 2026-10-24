@@ -37,6 +37,9 @@ services:
       # senhas dos usuários criados na 1ª execução (cozinha@brasa.com e dono@brasa.com)
       SENHA_PADRAO_COZINHA: ${SENHA_PADRAO_COZINHA:-brasa123}
       SENHA_PADRAO_DONO: ${SENHA_PADRAO_DONO:-brasa123}
+      UPLOAD_DIR: /app/uploads   # comprovantes do Pix enviados pelos clientes
+    volumes:
+      - brasa_comprovantes:/app/uploads
     ports:
       - "8002:8002"
     depends_on:
@@ -68,6 +71,7 @@ services:
       DIAS_RETENCAO: 14      # apaga backups com mais de 14 dias
     volumes:
       - ./backups:/backups   # pasta "backups" do projeto (fora do Git) — copie para a nuvem/HD externo
+      - brasa_comprovantes:/uploads:ro   # comprovantes do Pix entram no backup
     depends_on:
       db:
         condition: service_healthy
@@ -80,3 +84,4 @@ networks:
 
 volumes:
   brasa_mysql_data:
+  brasa_comprovantes:

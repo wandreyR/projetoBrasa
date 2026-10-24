@@ -1,9 +1,13 @@
+import os
+import re
 import secrets
 from collections import Counter
 from datetime import datetime
+from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
-from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, WebSocket, WebSocketDisconnect
+from fastapi.responses import FileResponse
 from sqlalchemy import func, or_
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session, joinedload
@@ -15,6 +19,7 @@ from ..estoque_service import (
     EstoqueInsuficiente, ajustar_por_mudanca_de_status, baixar_pedido, consumo_do_pedido, evento_estoque,
 )
 from ..loja_service import definir_pausa, status_loja
+from ..pix_service import pix_disponivel, pix_do_pedido
 from ..tempo import hoje_local, inicio_do_dia_em_utc
 from ..websocket_manager import manager
 from .cardapio import MAX_PORCOES
@@ -33,6 +38,27 @@ STATUS_EM_ANDAMENTO = [
     models.StatusPedido.saiu_entrega,
 ]
 STATUS_FINAIS = (models.StatusPedido.entregue, models.StatusPedido.cancelado)
+
+# Comprovantes do Pix: pasta fora do código (volume do Docker), tamanho e tipos limitados
+PASTA_COMPROVANTES = Path(os.getenv("UPLOAD_DIR", str(Path(__file__).resolve().parents[2] / "uploads")))
+LIMITE_COMPROVANTE = 5 * 1024 * 1024  # 5 MB
+TIPOS_COMPROVANTE = {  # assinatura dos primeiros bytes → (extensão, tipo)
+    b"\xff\xd8\xff": ("jpg", "image/jpeg"),
+    b"\x89PNG\r\n\x1a\n": ("png", "image/png"),
+    b"%PDF-": ("pdf", "application/pdf"),
+}
+NOME_ARQUIVO = re.compile(r"^[0-9a-f]{32}\.(jpg|png|webp|pdf)$")
+MIME = {"jpg": "image/jpeg", "png": "image/png", "webp": "image/webp", "pdf": "application/pdf"}
+
+
+def _tipo_do_arquivo(conteudo: bytes) -> Optional[str]:
+    """Confere o conteúdo real (não confia na extensão nem no tipo enviado pelo navegador)."""
+    if conteudo[:4] == b"RIFF" and conteudo[8:12] == b"WEBP":
+        return "webp"
+    for assinatura, (extensao, _) in TIPOS_COMPROVANTE.items():
+        if conteudo.startswith(assinatura):
+            return extensao
+    return None
 
 
 def _iso(momento: Optional[datetime]) -> Optional[str]:
@@ -64,6 +90,7 @@ def _serializar_pedido(pedido: models.Pedido) -> dict:
         "atualizado_em": _iso(pedido.atualizado_em),
         "saiu_entrega_em": _iso(pedido.saiu_entrega_em),
         "finalizado_em": _iso(pedido.finalizado_em),
+        "comprovante_enviado_em": _iso(pedido.comprovante_enviado_em),
         "cliente_nome": pedido.cliente.nome if pedido.cliente else None,
         "cliente_telefone": pedido.cliente.telefone if pedido.cliente else None,
         "itens": [
@@ -204,6 +231,8 @@ async def criar_pedido(dados: schemas.PedidoIn, db: Session = Depends(get_db)):
     loja = status_loja(db)
     if not loja["aberto"]:
         raise HTTPException(status_code=409, detail=loja["mensagem"])
+    if dados.forma_pagamento == models.FormaPagamento.pix and not pix_disponivel(db):
+        raise HTTPException(status_code=422, detail="Pix indisponível no momento. Escolha outra forma de pagamento.")
 
     # Valida e precifica todos os itens ANTES de gravar qualquer coisa
     resolvidos = [_resolver_item(db, item) for item in dados.itens]
@@ -288,8 +317,7 @@ async def criar_pedido(dados: schemas.PedidoIn, db: Session = Depends(get_db)):
 # Acompanhamento — público, pelo código secreto do link (não pelo número)
 # ---------------------------------------------------------------------
 
-@router.get("/pedidos/acompanhar/{codigo}", response_model=schemas.AcompanhamentoOut)
-def acompanhar_pedido(codigo: str, db: Session = Depends(get_db)):
+def _pedido_pelo_codigo(db: Session, codigo: str) -> models.Pedido:
     pedido = (
         db.query(models.Pedido)
         .options(joinedload(models.Pedido.itens), joinedload(models.Pedido.cliente), joinedload(models.Pedido.entregador))
@@ -298,6 +326,12 @@ def acompanhar_pedido(codigo: str, db: Session = Depends(get_db)):
     )
     if not pedido or len(codigo) < 12:
         raise HTTPException(status_code=404, detail="Pedido não encontrado. Confira o link recebido.")
+    return pedido
+
+
+@router.get("/pedidos/acompanhar/{codigo}", response_model=schemas.AcompanhamentoOut)
+def acompanhar_pedido(codigo: str, db: Session = Depends(get_db)):
+    pedido = _pedido_pelo_codigo(db, codigo)
     nome = (pedido.cliente.nome if pedido.cliente else "").split(" ")[0]
     return schemas.AcompanhamentoOut(
         id=pedido.id,
@@ -316,6 +350,7 @@ def acompanhar_pedido(codigo: str, db: Session = Depends(get_db)):
         atualizado_em=pedido.atualizado_em,
         saiu_entrega_em=pedido.saiu_entrega_em,
         finalizado_em=pedido.finalizado_em,
+        comprovante_enviado=bool(pedido.comprovante_arquivo),
         itens=[
             schemas.AcompanhamentoItemOut(nome=i.nome, tamanho=i.tamanho, quantidade=i.quantidade, detalhes=i.detalhes)
             for i in pedido.itens
@@ -323,9 +358,69 @@ def acompanhar_pedido(codigo: str, db: Session = Depends(get_db)):
     )
 
 
+@router.get("/pedidos/acompanhar/{codigo}/pix", response_model=schemas.PixPedidoOut)
+def pix_do_link(codigo: str, db: Session = Depends(get_db)):
+    """Chave, "copia e cola" e QR Code com o valor exato do pedido."""
+    pedido = _pedido_pelo_codigo(db, codigo)
+    if pedido.forma_pagamento != models.FormaPagamento.pix:
+        raise HTTPException(status_code=409, detail="Este pedido não é pago com Pix")
+    if not pix_disponivel(db):
+        raise HTTPException(status_code=409, detail="Pix indisponível no momento. Fale com a pizzaria.")
+    return pix_do_pedido(db, pedido)
+
+
+@router.post("/pedidos/acompanhar/{codigo}/comprovante", status_code=201)
+async def enviar_comprovante(codigo: str, arquivo: UploadFile = File(...), db: Session = Depends(get_db)):
+    """O cliente envia o comprovante do Pix (foto ou PDF); a cozinha é avisada na hora."""
+    pedido = _pedido_pelo_codigo(db, codigo)
+    if pedido.forma_pagamento != models.FormaPagamento.pix:
+        raise HTTPException(status_code=409, detail="Este pedido não é pago com Pix")
+    if pedido.status == models.StatusPedido.cancelado:
+        raise HTTPException(status_code=409, detail="Este pedido foi cancelado")
+    if pedido.pago:
+        raise HTTPException(status_code=409, detail="A pizzaria já confirmou este pagamento")
+
+    conteudo = await arquivo.read(LIMITE_COMPROVANTE + 1)
+    if len(conteudo) > LIMITE_COMPROVANTE:
+        raise HTTPException(status_code=413, detail="Arquivo muito grande (máximo 5 MB)")
+    extensao = _tipo_do_arquivo(conteudo)
+    if not extensao:
+        raise HTTPException(status_code=415, detail="Envie uma foto (JPG, PNG ou WEBP) ou um PDF do comprovante")
+
+    PASTA_COMPROVANTES.mkdir(parents=True, exist_ok=True)
+    nome = f"{secrets.token_hex(16)}.{extensao}"  # nome aleatório: não dá para adivinhar nem sobrescrever outro
+    (PASTA_COMPROVANTES / nome).write_bytes(conteudo)
+    anterior = pedido.comprovante_arquivo
+    pedido.comprovante_arquivo = nome
+    pedido.comprovante_enviado_em = datetime.utcnow()
+    db.commit()
+    if anterior and NOME_ARQUIVO.match(anterior):
+        (PASTA_COMPROVANTES / anterior).unlink(missing_ok=True)  # reenvio substitui o anterior
+
+    pedido = _carregar_pedido(db, pedido.id)
+    await manager.broadcast({"evento": "comprovante_recebido", "pedido": _serializar_pedido(pedido)})
+    return {"ok": True, "enviado_em": _iso(pedido.comprovante_enviado_em)}
+
+
 # ---------------------------------------------------------------------
 # Pedido completo — só equipe (antes era público e expunha telefone/endereço)
 # ---------------------------------------------------------------------
+
+@router.get("/cozinha/pedidos/{pedido_id}/comprovante")
+def baixar_comprovante(
+    pedido_id: int,
+    db: Session = Depends(get_db),
+    usuario_atual: models.Usuario = Depends(get_current_user),
+):
+    pedido = db.get(models.Pedido, pedido_id)
+    if not pedido or not pedido.comprovante_arquivo or not NOME_ARQUIVO.match(pedido.comprovante_arquivo):
+        raise HTTPException(status_code=404, detail="Este pedido não tem comprovante")
+    caminho = PASTA_COMPROVANTES / pedido.comprovante_arquivo
+    if not caminho.exists():
+        raise HTTPException(status_code=404, detail="Arquivo do comprovante não encontrado")
+    extensao = caminho.suffix.lstrip(".")
+    return FileResponse(caminho, media_type=MIME[extensao], filename=f"comprovante-pedido-{pedido_id}.{extensao}")
+
 
 @router.get("/pedidos/{pedido_id}", response_model=schemas.PedidoOut)
 def obter_pedido(

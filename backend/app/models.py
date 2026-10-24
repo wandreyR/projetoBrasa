@@ -199,6 +199,9 @@ class Pedido(Base):
     troco_para = Column(Float, nullable=True)  # dinheiro: valor da nota do cliente
     pago = Column(Integer, default=0, nullable=False)
     pago_em = Column(DateTime, nullable=True)
+    # Comprovante do Pix enviado pelo cliente (arquivo salvo em UPLOAD_DIR com nome aleatório)
+    comprovante_arquivo = Column(String(80), nullable=True)
+    comprovante_enviado_em = Column(DateTime, nullable=True)
 
     # Entrega
     bairro_id = Column(Integer, ForeignKey("bairros_entrega.id"), nullable=True)

@@ -34,6 +34,10 @@ def client():
     _banco_novo()
     from app.main import app
     with TestClient(app) as c:
+        # como numa instalação real: o dono já cadastrou a chave Pix (os pedidos de teste usam Pix)
+        r = c.put("/gerencial/config/pix", headers=_login(c, "dono@brasa.com"),
+                  json={"tipo": "telefone", "chave": "(62) 99999-0000", "nome": "Brasa Pizzaria", "cidade": "Goiânia"})
+        assert r.status_code == 200, r.text
         yield c
 
 

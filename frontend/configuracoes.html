@@ -40,6 +40,7 @@
     <button type="button" class="tab" role="tab" data-aba="bairros" aria-selected="false">Bairros e taxas</button>
     <button type="button" class="tab" role="tab" data-aba="entregadores" aria-selected="false">Entregadores</button>
     <button type="button" class="tab" role="tab" data-aba="horarios" aria-selected="false">Horário</button>
+    <button type="button" class="tab" role="tab" data-aba="pix" aria-selected="false">Pix</button>
   </div>
 
   <!-- Cardápio -->
@@ -97,9 +98,46 @@
     </div>
   </section>
 
+  <!-- Pix -->
+  <section class="aba" data-painel="pix" hidden>
+    <div class="painel">
+      <div class="painel-head">
+        <div><h2>Chave Pix da pizzaria</h2><p class="sub">O cliente vê a chave no carrinho e, depois de confirmar, um QR Code com o valor exato do pedido. Deixe a chave vazia para desligar o Pix no site.</p></div>
+        <span class="selo" id="statusPix" data-status="zerado">–</span>
+      </div>
+      <form id="formPix" class="form-pix" novalidate>
+        <label class="field">
+          <span>Tipo da chave</span>
+          <select name="tipo">
+            <option value="telefone">Celular</option>
+            <option value="cpf">CPF</option>
+            <option value="cnpj">CNPJ</option>
+            <option value="email">E-mail</option>
+            <option value="aleatoria">Chave aleatória</option>
+          </select>
+        </label>
+        <label class="field">
+          <span>Chave</span>
+          <input type="text" name="chave" maxlength="77" placeholder="Como aparece no seu banco">
+        </label>
+        <label class="field">
+          <span>Nome de quem recebe</span>
+          <input type="text" name="nome" maxlength="60" placeholder="Ex.: Brasa Pizzaria Ltda">
+        </label>
+        <label class="field">
+          <span>Cidade</span>
+          <input type="text" name="cidade" maxlength="40" placeholder="Ex.: Goiânia">
+        </label>
+        <div class="botoes"><button type="submit" class="btn btn-primary" id="salvarPix">Salvar Pix</button></div>
+      </form>
+      <p class="sub">Confira o nome e a cidade exatamente como estão no banco: eles aparecem para o cliente na hora de pagar. O sistema não confirma o pagamento sozinho — a cozinha confere o comprovante enviado e marca o pedido como pago.</p>
+    </div>
+  </section>
+
 </main>
 
 <script src="staff.js"></script>
+<script src="mascaras.js"></script>
 <script>
 const CATEGORIAS = { tradicionais: 'Tradicional', especiais: 'Especial', doces: 'Doce' };
 const TIPOS_ING = { massa: 'Massa', molho: 'Molho', topping: 'Adicional' };
@@ -297,6 +335,7 @@ async function carregarEntregadores() {
       <thead><tr><th>Nome</th><th>Telefone</th><th></th><th></th></tr></thead>
       <tbody>${lista.map(linhaEnt).join('')}${linhaEnt({})}</tbody>
     </table>`;
+  document.querySelectorAll('#tabEntregadores input[name="telefone"]').forEach(i => aplicarMascaraTelefone(i, { obrigatorio: false }));
 }
 
 document.getElementById('tabEntregadores').addEventListener('click', (e) => {
@@ -355,6 +394,45 @@ document.getElementById('salvarHorarios').addEventListener('click', async (e) =>
   }
 });
 
+/* ---------- Pix ---------- */
+
+const formPix = document.getElementById('formPix');
+
+function renderStatusPix(cfg) {
+  const selo = document.getElementById('statusPix');
+  const ativo = Boolean(cfg.chave && cfg.nome && cfg.cidade);
+  selo.dataset.status = ativo ? 'ok' : 'zerado';
+  selo.textContent = ativo ? `✓ Pix ativo no site: ${cfg.chave}` : '✕ Pix desligado no site';
+}
+
+async function carregarPix() {
+  const cfg = await api(`${C}/pix`);
+  formPix.elements.tipo.value = cfg.tipo;
+  formPix.elements.chave.value = cfg.chave;
+  formPix.elements.nome.value = cfg.nome;
+  formPix.elements.cidade.value = cfg.cidade;
+  renderStatusPix(cfg);
+}
+
+formPix.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const f = formPix.elements;
+  const btn = document.getElementById('salvarPix');
+  btn.disabled = true;
+  try {
+    const cfg = await api(`${C}/pix`, { method: 'PUT', body: {
+      tipo: f.tipo.value, chave: f.chave.value.trim(), nome: f.nome.value.trim(), cidade: f.cidade.value.trim(),
+    } });
+    f.chave.value = cfg.chave; // mostra a chave no formato que o Pix usa (ex.: +5562…)
+    renderStatusPix(cfg);
+    showToast('Pix salvo');
+  } catch (err) {
+    if (!(err instanceof ErroSessao)) showToast(err.message, 5000);
+  } finally {
+    btn.disabled = false;
+  }
+});
+
 /* ---------- Início ---------- */
 
 iniciarAreaEquipe({
@@ -363,7 +441,7 @@ iniciarAreaEquipe({
   onEntrar: async () => {
     document.getElementById('conteudo').hidden = false;
     try {
-      await Promise.all([carregarPizzas(), carregarBebidas(), carregarMontagem(), carregarBairros(), carregarEntregadores(), carregarHorarios()]);
+      await Promise.all([carregarPizzas(), carregarBebidas(), carregarMontagem(), carregarBairros(), carregarEntregadores(), carregarHorarios(), carregarPix()]);
     } catch (e) {
       if (!(e instanceof ErroSessao)) showToast(e.message, 5000);
     }

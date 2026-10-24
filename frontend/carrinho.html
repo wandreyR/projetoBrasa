@@ -50,8 +50,8 @@
       </label>
       <label class="field">
         <span>Telefone (WhatsApp)</span>
-        <input type="tel" name="telefone" autocomplete="tel" required placeholder="(11) 98765-4321"
-               minlength="10" maxlength="20" title="Informe DDD + número">
+        <input type="tel" name="telefone" autocomplete="tel" required placeholder="(62) 99999-0000"
+               maxlength="20" title="Informe DDD + número">
       </label>
       <label class="field" id="bairroField">
         <span>Bairro</span>
@@ -71,13 +71,14 @@
     </div>
 
     <h2 class="titulo-pagamento">Pagamento</h2>
-    <p class="dica-pagamento">Você paga na entrega ou na retirada.</p>
+    <p class="dica-pagamento" id="dicaPagamento">Você paga na entrega ou na retirada.</p>
     <div class="segmented" role="radiogroup" aria-label="Forma de pagamento">
       <label><input type="radio" name="forma_pagamento" value="pix" checked><span>Pix</span></label>
       <label><input type="radio" name="forma_pagamento" value="credito"><span>Crédito</span></label>
       <label><input type="radio" name="forma_pagamento" value="debito"><span>Débito</span></label>
       <label><input type="radio" name="forma_pagamento" value="dinheiro"><span>Dinheiro</span></label>
     </div>
+    <div class="pix-previa" id="pixPrevia" hidden></div>
     <div class="field-grid" id="trocoField" hidden>
       <label class="field">
         <span>Troco para quanto? <em>(deixe vazio se não precisar)</em></span>
@@ -95,12 +96,15 @@
 
 
 <script src="cart.js"></script>
+<script src="mascaras.js"></script>
 <script>
 const checkoutForm = document.getElementById('checkoutForm');
 const enderecoField = document.getElementById('enderecoField');
 const bairroField = document.getElementById('bairroField');
 const trocoField = document.getElementById('trocoField');
+const pixPrevia = document.getElementById('pixPrevia');
 let BAIRROS = [];
+let PIX = { disponivel: false };
 
 function escapeHTML(texto) {
   const div = document.createElement('div');
@@ -265,20 +269,26 @@ function renderConfirmacao(pedido) {
   const entrega = pedido.tipo_entrega === 'delivery'
     ? `Vamos entregar em <strong>${escapeHTML(pedido.endereco_entrega)}</strong> (${escapeHTML(pedido.bairro_nome)}).`
     : 'Avisaremos pelo telefone quando estiver pronto para retirada.';
-  const pagamento = `Pagamento: <strong>${PAGAMENTO_TEXTO[pedido.forma_pagamento] || pedido.forma_pagamento}</strong>`
-    + (pedido.troco_para ? ` (troco para ${formatPrice(pedido.troco_para)})` : '') + ' na entrega/retirada.';
+  const pagamento = pedido.forma_pagamento === 'pix'
+    ? 'Pagamento: <strong>Pix</strong> — pague agora pelo QR Code abaixo e envie o comprovante.'
+    : `Pagamento: <strong>${PAGAMENTO_TEXTO[pedido.forma_pagamento] || pedido.forma_pagamento}</strong>`
+      + (pedido.troco_para ? ` (troco para ${formatPrice(pedido.troco_para)})` : '') + ' na entrega/retirada.';
   document.getElementById('cartContent').innerHTML = `
     <div class="empty-state order-confirmed">
       <div class="pizza-thumb"></div>
       <p class="eyebrow">Pedido nº ${pedido.id}</p>
       <h3>Pedido enviado para o forno!</h3>
       <p>${entrega} Total: <strong>${formatPrice(pedido.total)}</strong>.<br>${pagamento}</p>
+      ${pedido.forma_pagamento === 'pix' ? '<div id="painelPix" class="painel-pix-alvo"></div>' : ''}
       <div style="display:flex; gap:10px; justify-content:center; flex-wrap:wrap;">
         <a href="${linkAcompanhar(pedido.codigo_acompanhamento)}" class="btn btn-primary">Acompanhar meu pedido</a>
         <a href="cardapio.html" class="btn btn-ghost">Voltar ao cardápio</a>
       </div>
     </div>
   `;
+  if (pedido.forma_pagamento === 'pix') {
+    renderPainelPix(document.getElementById('painelPix'), pedido.codigo_acompanhamento);
+  }
   window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 
@@ -298,11 +308,44 @@ checkoutForm.querySelectorAll('input[name="tipo_entrega"]').forEach(radio =>
 checkoutForm.elements.bairro_id.addEventListener('change', renderCart);
 
 // Dinheiro: pergunta o troco
+function atualizarCamposPagamento() {
+  const forma = checkoutForm.elements.forma_pagamento.value;
+  trocoField.hidden = forma !== 'dinheiro';
+  pixPrevia.hidden = forma !== 'pix' || !PIX.disponivel;
+  document.getElementById('dicaPagamento').textContent = forma === 'pix'
+    ? 'Com Pix você paga logo depois de confirmar o pedido e envia o comprovante.'
+    : 'Você paga na entrega ou na retirada.';
+}
 checkoutForm.querySelectorAll('input[name="forma_pagamento"]').forEach(radio =>
-  radio.addEventListener('change', () => {
-    trocoField.hidden = checkoutForm.elements.forma_pagamento.value !== 'dinheiro';
-  })
+  radio.addEventListener('change', atualizarCamposPagamento)
 );
+
+// Chave Pix da pizzaria: aparece assim que o cliente escolhe Pix
+async function carregarPix() {
+  try { PIX = await apiPublica('/cardapio/pix'); } catch (e) { PIX = { disponivel: false }; }
+  const radioPix = checkoutForm.querySelector('input[name="forma_pagamento"][value="pix"]');
+  if (!PIX.disponivel) {
+    // sem chave cadastrada: Pix fica indisponível e o padrão passa a ser crédito
+    radioPix.disabled = true;
+    radioPix.nextElementSibling.textContent = 'Pix (indisponível)';
+    if (radioPix.checked) checkoutForm.querySelector('input[name="forma_pagamento"][value="credito"]').checked = true;
+  } else {
+    pixPrevia.innerHTML = `
+      <p class="pix-rotulo">Chave Pix da pizzaria</p>
+      <div class="pix-copia">
+        <input type="text" readonly value="${escapeHTML(PIX.chave)}" aria-label="Chave Pix">
+        <button type="button" class="btn btn-dark" id="copiarChave">Copiar</button>
+      </div>
+      <p class="dica-pix">Favorecido: <b>${escapeHTML(PIX.nome)}</b>. Depois de confirmar o pedido mostramos o
+        <b>QR Code com o valor exato</b> e você envia o comprovante por aqui.</p>`;
+    document.getElementById('copiarChave').addEventListener('click', async () => {
+      const copiou = await copiarTexto(PIX.chave);
+      if (!copiou) pixPrevia.querySelector('input').select();
+      showToast(copiou ? 'Chave Pix copiada' : 'Selecionado: use Ctrl+C para copiar');
+    });
+  }
+  atualizarCamposPagamento();
+}
 
 // Loja fechada/pausada: o botão avisa em vez de enviar
 document.addEventListener('brasa:loja', (e) => {
@@ -311,9 +354,11 @@ document.addEventListener('brasa:loja', (e) => {
   botao.textContent = e.detail.aberto ? 'Confirmar pedido' : 'Pizzaria fechada agora';
 });
 
+aplicarMascaraTelefone(checkoutForm.elements.telefone);
 initCheckout(checkoutForm, { onSuccess: renderConfirmacao });
 renderCart();
 carregarBairros();
+carregarPix();
 atualizarPrecos();
 carregarStatusLoja();
 </script>

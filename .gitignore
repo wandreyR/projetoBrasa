@@ -17,3 +17,6 @@ Thumbs.db
 
 # Backups do banco (dados de clientes) — nunca versionar
 backups/
+
+# Comprovantes do Pix enviados pelos clientes (rodando sem Docker)
+backend/uploads/
