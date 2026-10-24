@@ -498,12 +498,79 @@ class EntregadorIn(BaseModel):
     nome: str = Field(min_length=2, max_length=80)
     telefone: Optional[str] = Field(default=None, max_length=20)
     ativo: int = Field(default=1, ge=0, le=1)
+    # senha da área do entregador: vazio = mantém a atual; "remover_acesso" tira o acesso
+    senha: Optional[str] = Field(default=None, max_length=64)
+    remover_acesso: bool = False
+
+    @field_validator("senha")
+    @classmethod
+    def senha_minima(cls, v):
+        if v and len(v) < 4:
+            raise ValueError("A senha do entregador precisa ter pelo menos 4 caracteres")
+        return v or None
 
 
-class EntregadorOut(EntregadorIn):
+class EntregadorOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
+    nome: str
+    telefone: Optional[str] = None
+    ativo: int = 1
+    tem_acesso: bool = False  # a senha nunca volta na resposta
+
+
+class LoginEntregadorIn(BaseModel):
+    telefone: str = Field(min_length=8, max_length=20)
+    senha: str = Field(min_length=1, max_length=64)
+
+
+class TokenEntregadorOut(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+    nome: str
+    cargo: str = "entregador"
+
+
+class EntregaOut(BaseModel):
+    """O que o entregador precisa para levar o pedido (só pedidos de entrega)."""
+    id: int
+    status: StatusPedido
+    cliente_nome: str
+    cliente_telefone: str
+    endereco_entrega: Optional[str] = None
+    bairro_nome: Optional[str] = None
+    observacoes: Optional[str] = None
+    itens: List[AcompanhamentoItemOut]
+    total: float
+    taxa_entrega: float
+    forma_pagamento: Optional[FormaPagamento] = None
+    troco_para: Optional[float] = None
+    pago: bool
+    criado_em: datetime
+    atualizado_em: Optional[datetime] = None
+    saiu_entrega_em: Optional[datetime] = None
+    minha: bool = False
+
+
+class NaCozinhaOut(BaseModel):
+    id: int
+    status: StatusPedido
+    bairro_nome: Optional[str] = None
+    criado_em: datetime
+
+
+class PainelEntregadorOut(BaseModel):
+    entregador_nome: str
+    prontos: List[EntregaOut]       # prontos esperando entregador
+    minhas: List[EntregaOut]        # saíram comigo e ainda não foram entregues
+    na_cozinha: List[NaCozinhaOut]  # entregas que vão ficar prontas em breve
+    entregues_hoje: int
+    taxas_hoje: float
+
+
+class EntregueIn(BaseModel):
+    recebi_pagamento: bool = False  # dinheiro/cartão recebido na porta → marca como pago
 
 
 class HorarioDia(BaseModel):

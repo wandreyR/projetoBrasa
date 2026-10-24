@@ -138,8 +138,13 @@ class Entregador(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     nome = Column(String(80), nullable=False)
-    telefone = Column(String(20), nullable=True)
+    telefone = Column(String(20), nullable=True)  # também é o login na área do entregador
     ativo = Column(Integer, default=1)
+    senha_hash = Column(String(255), nullable=True)  # vazio = sem acesso à área do entregador
+
+    @property
+    def tem_acesso(self) -> bool:
+        return bool(self.senha_hash)
 
 
 class HorarioFuncionamento(Base):

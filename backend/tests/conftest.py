@@ -22,10 +22,11 @@ def _banco_novo():
     sessao = sessionmaker(autocommit=False, autoflush=False, bind=engine)
     # o app guarda referências ao engine/sessão em alguns módulos: troca em todos
     from app import main
-    from app.routers import pedidos
+    from app.routers import entregador, pedidos
     database.engine, database.SessionLocal = engine, sessao
     main.engine, main.SessionLocal = engine, sessao
     pedidos.SessionLocal = sessao
+    entregador.SessionLocal = sessao
     return sessao
 
 

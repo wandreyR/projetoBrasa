@@ -59,3 +59,22 @@ class ConnectionManager:
 
 
 manager = ConnectionManager()
+
+
+# Canal separado para os celulares dos entregadores: eles NÃO recebem os eventos da
+# cozinha (que trazem dados de todos os pedidos). Recebem só um aviso curto e buscam
+# o próprio painel, que mostra apenas pedidos de entrega.
+manager_entregadores = ConnectionManager()
+
+
+async def avisar_entregadores(pedido):
+    """Chamado sempre que um pedido de entrega muda (criado, pronto, saiu, entregue…)."""
+    if getattr(pedido.tipo_entrega, "value", pedido.tipo_entrega) != "delivery":
+        return
+    status = getattr(pedido.status, "value", pedido.status)
+    if status == "pronto" and pedido.entregador_id is None:
+        await manager_entregadores.broadcast(
+            {"evento": "pedido_pronto", "pedido": {"id": pedido.id, "bairro_nome": pedido.bairro_nome}}
+        )
+    else:
+        await manager_entregadores.broadcast({"evento": "atualizar"})

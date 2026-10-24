@@ -47,6 +47,7 @@ Isso vai:
 | Acompanhar pedido           | link mostrado após confirmar          | Clientes                    |
 | Cozinha (Kanban ao vivo)    | http://localhost:8080/cozinha.html    | Funcionários e dono         |
 | Estoque                     | http://localhost:8080/estoque.html    | Funcionários e dono         |
+| Área do entregador          | http://localhost:8080/entregador.html | Entregadores (login = celular + senha definida pelo dono) |
 | Gerencial                   | http://localhost:8080/gerencial.html  | Somente o dono              |
 | Configurações               | http://localhost:8080/configuracoes.html | Somente o dono (cardápio, preços, bairros, entregadores, horário) |
 | Backend (Swagger)           | http://localhost:8002/docs            | Desenvolvimento             |
@@ -94,8 +95,12 @@ caso prefira não usar Docker no dia a dia.
 4. A cozinha recebe o pedido na hora (WebSocket) com **alarme que repete** até alguém ver,
    opcionalmente **imprime a comanda** (80 mm) e o pedido anda pelo Kanban:
    **Novos → Em preparo → Prontos → Saiu p/ entrega (com o entregador) → Finalizados**
-5. O cliente acompanha as etapas pelo link (atualiza sozinho). A cozinha marca **pago** quando recebe
-6. O gerencial mostra faturamento, despesas, **formas de pagamento**, **valor a receber** e
+5. Na **área do entregador** (celular) o motoboy é avisado com som e vibração quando a entrega fica
+   pronta, toca em **"Peguei, saindo"** (só um entregador consegue pegar cada pedido), vê endereço com
+   **mapa, ligar e WhatsApp**, quanto cobrar e o troco, e dá baixa em **Entregue** (marcando se recebeu)
+   ou **Não consegui entregar** (volta para "Prontos"). A cozinha também pode designar pelo Kanban
+6. O cliente acompanha as etapas pelo link (atualiza sozinho). A cozinha marca **pago** quando recebe
+7. O gerencial mostra faturamento, despesas, **formas de pagamento**, **valor a receber** e
    **entregas por entregador** (para acertar com os motoboys)
 
 A cozinha pode **pausar os pedidos do site** quando estiver sobrecarregada.

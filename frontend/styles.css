@@ -783,7 +783,7 @@ img, svg { display: block; max-width: 100%; }
 
 /* ---------- Topo: acesso da equipe (cozinha / gerente) ---------- */
 
-.equipe-links { display: flex; gap: 8px; }
+.equipe-links { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
 
 .equipe-link {
   font-size: 13px;

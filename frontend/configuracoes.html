@@ -79,7 +79,7 @@
   <!-- Entregadores -->
   <section class="aba" data-painel="entregadores" hidden>
     <div class="painel">
-      <div class="painel-head"><div><h2>Entregadores</h2><p class="sub">Aparecem para a cozinha escolher quando o pedido sai para entrega. O Gerencial mostra quantas entregas cada um fez.</p></div></div>
+      <div class="painel-head"><div><h2>Entregadores</h2><p class="sub">Defina uma senha para o entregador usar o app em <a href="entregador.html" target="_blank"><b>entregador.html</b></a> (login = celular). Lá ele é avisado quando a pizza fica pronta, pega a entrega, vê o endereço e dá baixa. O Gerencial mostra quantas entregas cada um fez.</p></div></div>
       <div class="tabela-wrap" id="tabEntregadores"></div>
     </div>
   </section>
@@ -328,11 +328,17 @@ async function carregarEntregadores() {
       <td><input type="text" name="nome" value="${escapeHTML(x.nome || '')}" placeholder="Nome" aria-label="Nome"></td>
       <td><input type="tel" name="telefone" value="${escapeHTML(x.telefone || '')}" placeholder="(62) 99999-0000" aria-label="Telefone"></td>
       <td><label class="check"><input type="checkbox" name="ativo" ${x.id ? (x.ativo ? 'checked' : '') : 'checked'}> Ativo</label></td>
+      <td class="acesso-entregador">
+        <input type="password" name="senha" autocomplete="new-password" maxlength="64"
+               placeholder="${x.tem_acesso ? 'nova senha (opcional)' : 'senha para liberar'}" aria-label="Senha do app do entregador">
+        ${x.tem_acesso ? `<span class="selo" data-status="ok">✓ acesso liberado</span>
+          <label class="check"><input type="checkbox" name="remover_acesso"> remover</label>` : '<span class="selo" data-status="zerado">sem acesso</span>'}
+      </td>
       <td><button type="button" class="btn-mini" data-salvar-entregador>${x.id ? 'Salvar' : '+ Adicionar'}</button></td>
     </tr>`;
   document.getElementById('tabEntregadores').innerHTML = `
     <table class="tabela tabela-edicao">
-      <thead><tr><th>Nome</th><th>Telefone</th><th></th><th></th></tr></thead>
+      <thead><tr><th>Nome</th><th>Celular (login)</th><th></th><th>Acesso ao app do entregador</th><th></th></tr></thead>
       <tbody>${lista.map(linhaEnt).join('')}${linhaEnt({})}</tbody>
     </table>`;
   document.querySelectorAll('#tabEntregadores input[name="telefone"]').forEach(i => aplicarMascaraTelefone(i, { obrigatorio: false }));
@@ -342,9 +348,16 @@ document.getElementById('tabEntregadores').addEventListener('click', (e) => {
   const btn = e.target.closest('[data-salvar-entregador]');
   if (!btn) return;
   const tr = linha(btn);
-  const corpo = { nome: campo(tr, 'nome').value.trim(), telefone: campo(tr, 'telefone').value.trim() || null, ativo: campo(tr, 'ativo').checked ? 1 : 0 };
+  const remover = campo(tr, 'remover_acesso');
+  const corpo = {
+    nome: campo(tr, 'nome').value.trim(), telefone: campo(tr, 'telefone').value.trim() || null,
+    ativo: campo(tr, 'ativo').checked ? 1 : 0,
+    senha: campo(tr, 'senha').value || null,
+    remover_acesso: Boolean(remover && remover.checked),
+  };
   const id = tr.dataset.id;
-  salvar(btn, id ? `${C}/entregadores/${id}` : `${C}/entregadores`, id ? 'PUT' : 'POST', corpo, id ? null : carregarEntregadores);
+  // recarrega a tabela para mostrar o novo estado do acesso (e limpar o campo de senha)
+  salvar(btn, id ? `${C}/entregadores/${id}` : `${C}/entregadores`, id ? 'PUT' : 'POST', corpo, carregarEntregadores);
 });
 
 /* ---------- Horários ---------- */

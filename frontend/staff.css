@@ -641,3 +641,9 @@ details.painel[open] > summary h2::after { content: ' ▾'; }
   background: var(--semolina);
   color: var(--crust-dark);
 }
+
+.acesso-entregador { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; min-width: 220px; }
+.acesso-entregador input[type="password"] {
+  font-size: 13.5px; padding: 7px 8px; border-radius: var(--radius-s); border: 1px solid var(--line-dark);
+  background: var(--semolina); color: var(--crust-dark); width: 160px;
+}

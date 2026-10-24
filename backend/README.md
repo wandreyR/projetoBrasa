@@ -66,6 +66,12 @@ Com o servidor rodando, acesse:
 | GET    | `/cozinha/entregadores`               | sim          | Entregadores ativos                          |
 | PUT    | `/cozinha/pausa`                      | sim          | Pausa/retoma os pedidos do site              |
 | *      | `/gerencial/config/...`               | dono         | Pizzas, bebidas, adicionais, tamanhos, bairros, entregadores, horários |
+| POST   | `/auth/entregador/login`              | não          | Login do entregador (celular + senha)        |
+| GET    | `/entregador/painel`                  | entregador   | Prontos para sair, minhas entregas, na cozinha |
+| POST   | `/entregador/pedidos/{id}/sair`       | entregador   | Pega a entrega (sai com o pedido)            |
+| POST   | `/entregador/pedidos/{id}/entregue`   | entregador   | Dá baixa (e marca pago se recebeu)           |
+| POST   | `/entregador/pedidos/{id}/devolver`   | entregador   | Não conseguiu entregar: volta para "Prontos" |
+| WS     | `/ws/entregador?token=<jwt>`          | entregador   | Aviso de pedido pronto (canal separado da cozinha) |
 | POST   | `/pedidos`                            | não          | Cria um pedido (409 se faltar estoque)       |
 | GET    | `/pedidos/{id}`                       | sim          | Pedido completo (equipe)                     |
 | POST   | `/auth/login`                         | não          | Login da cozinha/admin, retorna JWT          |

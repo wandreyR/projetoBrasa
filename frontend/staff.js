@@ -258,19 +258,25 @@ function setConexao(estado, texto) {
  * onAbrir(): chamado a cada (re)conexão — bom lugar para recarregar os dados.
  * onMensagem(msg): cada evento JSON recebido.
  */
-function conectarTempoReal({ onAbrir, onMensagem }) {
+function conectarTempoReal({
+  onAbrir,
+  onMensagem,
+  caminho = '/ws/cozinha',            // a área do entregador usa /ws/entregador
+  obterToken = () => (getSessao() || {}).token,
+  aoExpirar = () => { limparSessao(); abrirLogin('Sua sessão expirou. Entre novamente.'); },
+}) {
   let socket = null;
   let tentativas = 0;
   let timerPing = null;
   let timerReconexao = null;
 
   function conectar() {
-    const sessao = getSessao();
-    if (!sessao) return;
+    const token = obterToken();
+    if (!token) return;
     clearTimeout(timerReconexao);
     setConexao('conectando', 'Conectando…');
 
-    const s = new WebSocket(`${WS_URL}/ws/cozinha?token=${encodeURIComponent(sessao.token)}`);
+    const s = new WebSocket(`${WS_URL}${caminho}?token=${encodeURIComponent(token)}`);
     socket = s;
 
     s.onopen = () => {
@@ -294,9 +300,8 @@ function conectarTempoReal({ onAbrir, onMensagem }) {
       clearInterval(timerPing);
       if (event.code === 4401) {
         // token expirado: não adianta reconectar, precisa logar de novo
-        limparSessao();
         setConexao('offline', 'Sessão expirada');
-        abrirLogin('Sua sessão expirou. Entre novamente.');
+        aoExpirar();
         return;
       }
       tentativas += 1;

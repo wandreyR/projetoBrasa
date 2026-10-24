@@ -1,4 +1,5 @@
 """Configurações do dono: cardápio e preços, tamanhos, bairros, entregadores e horários."""
+import re
 from typing import List, Type
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -6,7 +7,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from .. import models, schemas
-from ..auth import exigir_admin
+from ..auth import exigir_admin, hash_senha
 from ..database import get_db
 from ..loja_service import status_loja
 from ..pix_service import ChavePixInvalida, ler_config, salvar_config
@@ -138,9 +139,29 @@ def listar_entregadores(db: Session = Depends(get_db)):
     return db.query(models.Entregador).order_by(models.Entregador.nome).all()
 
 
+def _aplicar_entregador(db: Session, entregador: models.Entregador, dados: schemas.EntregadorIn):
+    """Dados do entregador + acesso à área do entregador (login = celular, senha definida pelo dono)."""
+    entregador.nome = dados.nome
+    entregador.telefone = dados.telefone or None
+    entregador.ativo = dados.ativo
+    if dados.remover_acesso:
+        entregador.senha_hash = None
+    elif dados.senha:
+        entregador.senha_hash = hash_senha(dados.senha)
+    if entregador.senha_hash:
+        digitos = re.sub(r"\D", "", entregador.telefone or "")
+        if len(digitos) < 10:
+            raise HTTPException(status_code=422, detail="Para liberar o acesso, informe o celular do entregador (é o login dele)")
+        outro = next((e for e in db.query(models.Entregador)
+                      if e.id != entregador.id and e.senha_hash and re.sub(r"\D", "", e.telefone or "") == digitos), None)
+        if outro:
+            raise HTTPException(status_code=409, detail=f"Esse celular já é o login de {outro.nome}")
+
+
 @router.post("/entregadores", response_model=schemas.EntregadorOut, status_code=201)
 def criar_entregador(dados: schemas.EntregadorIn, db: Session = Depends(get_db)):
-    entregador = models.Entregador(**dados.model_dump())
+    entregador = models.Entregador()
+    _aplicar_entregador(db, entregador, dados)
     db.add(entregador)
     return _salvar(db, entregador, "Não foi possível salvar")
 
@@ -148,8 +169,7 @@ def criar_entregador(dados: schemas.EntregadorIn, db: Session = Depends(get_db))
 @router.put("/entregadores/{entregador_id}", response_model=schemas.EntregadorOut)
 def atualizar_entregador(entregador_id: int, dados: schemas.EntregadorIn, db: Session = Depends(get_db)):
     entregador = _obter(db, models.Entregador, entregador_id, "Entregador")
-    for campo, valor in dados.model_dump().items():
-        setattr(entregador, campo, valor)
+    _aplicar_entregador(db, entregador, dados)
     return _salvar(db, entregador, "Não foi possível salvar")
 
 

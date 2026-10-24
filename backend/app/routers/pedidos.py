@@ -21,7 +21,7 @@ from ..estoque_service import (
 from ..loja_service import definir_pausa, status_loja
 from ..pix_service import pix_disponivel, pix_do_pedido
 from ..tempo import hoje_local, inicio_do_dia_em_utc
-from ..websocket_manager import manager
+from ..websocket_manager import avisar_entregadores, manager
 from .cardapio import MAX_PORCOES
 
 router = APIRouter(tags=["Pedidos"])
@@ -307,6 +307,7 @@ async def criar_pedido(dados: schemas.PedidoIn, db: Session = Depends(get_db)):
 
     # O pedido já está salvo; o broadcast nunca derruba a resposta ao cliente
     await manager.broadcast({"evento": "novo_pedido", "pedido": _serializar_pedido(pedido)})
+    await avisar_entregadores(pedido)
     if estoque_mudou:
         await manager.broadcast(evento_estoque(db))
 
@@ -500,6 +501,7 @@ async def atualizar_status(
     pedido = _carregar_pedido(db, pedido_id)
 
     await manager.broadcast({"evento": "status_atualizado", "pedido": _serializar_pedido(pedido)})
+    await avisar_entregadores(pedido)  # "pronto" toca no celular dos entregadores
     if estoque_mudou:
         await manager.broadcast(evento_estoque(db))
 
@@ -521,6 +523,7 @@ async def atualizar_pagamento(
     db.commit()
     pedido = _carregar_pedido(db, pedido_id)
     await manager.broadcast({"evento": "status_atualizado", "pedido": _serializar_pedido(pedido)})
+    await avisar_entregadores(pedido)
     return _montar_pedido_out(pedido)
 
 

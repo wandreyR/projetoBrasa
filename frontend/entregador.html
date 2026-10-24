@@ -1,0 +1,414 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="theme-color" content="#2B1810">
+<title>Entregador — BRASA Pizzaria</title>
+<link rel="stylesheet" href="styles.css">
+<link rel="stylesheet" href="staff.css">
+<link rel="stylesheet" href="entregador.css">
+</head>
+<body>
+
+<header class="brasa-header">
+  <div class="brasa-logo">
+    <span class="mark">BRA<em>SA</em></span>
+    <span class="tagline">entregas</span>
+  </div>
+  <div class="header-actions">
+    <div class="usuario-box" id="usuarioBox" hidden>
+      <span class="usuario-nome" id="nomeEntregador"></span>
+      <button type="button" class="btn-sair" id="btnSair">Sair</button>
+    </div>
+  </div>
+</header>
+
+<!-- Login -->
+<main class="area-entregador" id="telaLogin">
+  <form class="login-card login-entregador" id="formLogin" novalidate>
+    <p class="eyebrow">Área do entregador</p>
+    <h2>Entrar</h2>
+    <p class="login-msg" id="loginMsg" role="alert"></p>
+    <label class="field">
+      <span>Celular</span>
+      <input type="tel" name="telefone" required autocomplete="tel" maxlength="20">
+    </label>
+    <label class="field">
+      <span>Senha</span>
+      <input type="password" name="senha" required autocomplete="current-password" maxlength="64">
+    </label>
+    <button type="submit" class="btn btn-primary btn-block">Entrar</button>
+    <p class="dica-login">A senha é cadastrada pela pizzaria. Esqueceu? Fale com o gerente.</p>
+    <a href="cardapio.html" class="login-voltar">← Voltar ao site</a>
+  </form>
+</main>
+
+<!-- Painel -->
+<main class="area-entregador" id="telaPainel" hidden>
+  <div class="barra-entregador">
+    <span class="conexao" id="conexao" data-estado="offline" role="status">
+      <span class="dot"></span><span id="conexaoTexto">Desconectado</span>
+    </span>
+    <button type="button" class="btn-som" id="btnSom">🔔 Som</button>
+    <button type="button" class="btn-som" id="btnAtualizar">↻ Atualizar</button>
+  </div>
+
+  <button type="button" class="aviso-pronto" id="avisoPronto" hidden></button>
+
+  <section class="resumo-dia" aria-label="Hoje">
+    <div><b id="entreguesHoje">0</b><span>entregas hoje</span></div>
+    <div><b id="taxasHoje">R$ 0</b><span>em taxas</span></div>
+  </section>
+
+  <section class="bloco">
+    <h2>Minhas entregas <span class="contador" id="qtdMinhas">0</span></h2>
+    <div id="listaMinhas" class="lista-entregas"></div>
+  </section>
+
+  <section class="bloco">
+    <h2>Prontos para sair <span class="contador destaque" id="qtdProntos">0</span></h2>
+    <div id="listaProntos" class="lista-entregas"></div>
+  </section>
+
+  <section class="bloco">
+    <h2>Saindo em breve <span class="contador" id="qtdCozinha">0</span></h2>
+    <p class="sub">Entregas ainda na cozinha — você é avisado quando ficarem prontas.</p>
+    <ul id="listaCozinha" class="lista-cozinha"></ul>
+  </section>
+</main>
+
+<!-- Confirmação de entrega -->
+<dialog class="dialogo" id="dlgEntregue">
+  <form method="dialog" id="formEntregue">
+    <h2 id="entregueTitulo">Entregar pedido</h2>
+    <p class="sub" id="entregueTexto"></p>
+    <div class="botoes botoes-coluna">
+      <button type="button" class="btn btn-primary" data-recebi="1" id="btnRecebi">Entregue e recebi o pagamento</button>
+      <button type="button" class="btn btn-ghost" data-recebi="0" id="btnSemReceber">Entregue (já estava pago)</button>
+      <button type="button" class="btn btn-ghost" data-fechar>Voltar</button>
+    </div>
+  </form>
+</dialog>
+
+<script src="staff.js"></script>
+<script src="mascaras.js"></script>
+<script>
+const SESSAO_ENTREGADOR = 'brasa_sessao_entregador'; // separada da sessão da cozinha
+const SOM_KEY = 'brasa_entregador_som';
+const PAGAMENTO = { pix: 'Pix', credito: 'cartão de crédito', debito: 'cartão de débito', dinheiro: 'dinheiro' };
+const STATUS_COZINHA = { pendente: 'aguardando', em_preparo: 'no forno' };
+const CIDADE_MAPA = 'Goiânia - GO'; // completa o endereço no link do mapa
+
+let painel = null;
+let somLigado = localStorage.getItem(SOM_KEY) !== '0';
+let entregaAberta = null;
+
+/* ---------- Sessão própria do entregador ---------- */
+
+function sessaoEntregador() {
+  try { return JSON.parse(localStorage.getItem(SESSAO_ENTREGADOR)); } catch (e) { return null; }
+}
+function sairEntregador(mensagem = '') {
+  localStorage.removeItem(SESSAO_ENTREGADOR);
+  document.getElementById('telaPainel').hidden = true;
+  document.getElementById('usuarioBox').hidden = true;
+  document.getElementById('telaLogin').hidden = false;
+  document.getElementById('loginMsg').textContent = mensagem;
+}
+
+async function apiEntregador(caminho, { method = 'GET', body } = {}) {
+  const sessao = sessaoEntregador();
+  const headers = { Authorization: `Bearer ${sessao ? sessao.token : ''}` };
+  if (body !== undefined) headers['Content-Type'] = 'application/json';
+  let resp;
+  try {
+    resp = await fetch(`${API_URL}${caminho}`, { method, headers, body: body !== undefined ? JSON.stringify(body) : undefined });
+  } catch (e) {
+    throw new Error('Sem conexão com a pizzaria. Confira a internet do celular.');
+  }
+  if (resp.status === 401) {
+    sairEntregador('Seu acesso expirou. Entre novamente.');
+    throw new Error('Acesso expirado');
+  }
+  const corpo = await resp.json().catch(() => null);
+  if (!resp.ok) throw new Error(mensagemDeErroApi(corpo, resp.status));
+  return corpo;
+}
+
+/* ---------- Login ---------- */
+
+const formLogin = document.getElementById('formLogin');
+aplicarMascaraTelefone(formLogin.elements.telefone);
+
+formLogin.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  if (!formLogin.reportValidity()) return;
+  const botao = formLogin.querySelector('[type=submit]');
+  botao.disabled = true;
+  document.getElementById('loginMsg').textContent = '';
+  try {
+    const resp = await fetch(`${API_URL}/auth/entregador/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ telefone: formLogin.elements.telefone.value, senha: formLogin.elements.senha.value }),
+    });
+    const corpo = await resp.json().catch(() => null);
+    if (!resp.ok) throw new Error(mensagemDeErroApi(corpo, resp.status));
+    localStorage.setItem(SESSAO_ENTREGADOR, JSON.stringify({ token: corpo.access_token, nome: corpo.nome }));
+    formLogin.reset();
+    entrar();
+  } catch (err) {
+    document.getElementById('loginMsg').textContent = err.message === 'Failed to fetch' ? 'Sem conexão com a pizzaria.' : err.message;
+  } finally {
+    botao.disabled = false;
+  }
+});
+
+document.getElementById('btnSair').addEventListener('click', () => sairEntregador());
+
+/* ---------- Som, vibração e tela ligada ---------- */
+
+let audioCtx = null;
+function destravarAudio() {
+  try {
+    audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+    if (audioCtx.state === 'suspended') audioCtx.resume();
+  } catch (e) { /* sem Web Audio */ }
+}
+['pointerdown', 'keydown'].forEach(ev => document.addEventListener(ev, destravarAudio, { capture: true }));
+
+function alertaPronto() {
+  if (navigator.vibrate) navigator.vibrate([400, 150, 400, 150, 400]);
+  if (!somLigado || !audioCtx || audioCtx.state !== 'running') return;
+  const t0 = audioCtx.currentTime;
+  [[0, 660], [0.18, 880], [0.36, 1100], [0.7, 660], [0.88, 880], [1.06, 1100]].forEach(([atraso, freq]) => {
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = 'square';
+    osc.frequency.value = freq;
+    gain.gain.setValueAtTime(0.0001, t0 + atraso);
+    gain.gain.exponentialRampToValueAtTime(0.35, t0 + atraso + 0.02);
+    gain.gain.exponentialRampToValueAtTime(0.0001, t0 + atraso + 0.16);
+    osc.connect(gain).connect(audioCtx.destination);
+    osc.start(t0 + atraso);
+    osc.stop(t0 + atraso + 0.18);
+  });
+}
+
+const btnSom = document.getElementById('btnSom');
+function renderSom() { btnSom.textContent = somLigado ? '🔔 Som ligado' : '🔕 Som desligado'; }
+btnSom.addEventListener('click', () => {
+  somLigado = !somLigado;
+  localStorage.setItem(SOM_KEY, somLigado ? '1' : '0');
+  renderSom();
+  if (somLigado) setTimeout(alertaPronto, 50);
+});
+renderSom();
+
+// mantém a tela do celular acesa enquanto o painel está aberto (quando o navegador permite)
+let travaTela = null;
+async function manterTelaLigada() {
+  try { if ('wakeLock' in navigator && !travaTela) travaTela = await navigator.wakeLock.request('screen'); } catch (e) { /* ok */ }
+}
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible') { travaTela = null; manterTelaLigada(); carregarPainel(); }
+});
+
+/* ---------- Painel ---------- */
+
+function minutos(iso) {
+  const d = parseDataApi(iso);
+  return d ? Math.max(0, Math.round((Date.now() - d.getTime()) / 60000)) : 0;
+}
+
+function textoPagamento(p) {
+  if (p.pago) return `<div class="pag ok">✓ Já pago${p.forma_pagamento === 'pix' ? ' (Pix)' : ''} — <b>não cobrar</b></div>`;
+  const forma = PAGAMENTO[p.forma_pagamento] || 'a combinar';
+  if (p.forma_pagamento === 'dinheiro' && p.troco_para) {
+    return `<div class="pag cobrar">💵 Cobrar <b>${formatPrice(p.total)}</b> em dinheiro<br>
+      Cliente paga com ${formatPrice(p.troco_para)} → <b>levar troco de ${formatPrice(p.troco_para - p.total)}</b></div>`;
+  }
+  if (p.forma_pagamento === 'pix') {
+    return `<div class="pag cobrar">⚠ Pix ainda não confirmado — total <b>${formatPrice(p.total)}</b>. Confira com a cozinha antes de sair.</div>`;
+  }
+  return `<div class="pag cobrar">💳 Cobrar <b>${formatPrice(p.total)}</b> no ${forma}${p.forma_pagamento === 'dinheiro' ? ' (sem troco)' : ' — leve a maquininha'}</div>`;
+}
+
+function linksCliente(p) {
+  const d = String(p.cliente_telefone || '').replace(/\D/g, '');
+  const tel = d.length > 11 && d.startsWith('55') ? d : `55${d}`;
+  const endereco = [p.endereco_entrega, p.bairro_nome, CIDADE_MAPA].filter(Boolean).join(', ');
+  return `
+    <div class="acoes-contato">
+      <a class="btn-contato" href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(endereco)}" target="_blank" rel="noopener">🗺 Mapa</a>
+      <a class="btn-contato" href="tel:+${tel}">📞 Ligar</a>
+      <a class="btn-contato" href="https://wa.me/${tel}" target="_blank" rel="noopener">💬 WhatsApp</a>
+    </div>`;
+}
+
+function itensHTML(p) {
+  return `<ul class="itens-entrega">${p.itens.map(i =>
+    `<li>${i.quantidade}× ${escapeHTML(i.nome)}${i.tamanho ? ` (${i.tamanho})` : ''}</li>`).join('')}</ul>`;
+}
+
+function cardMinha(p) {
+  return `
+    <article class="entrega minha" data-id="${p.id}">
+      <div class="entrega-topo"><span class="num">#${p.id}</span><span class="bairro">${escapeHTML(p.bairro_nome || '')}</span>
+        <span class="tempo">saiu há ${minutos(p.saiu_entrega_em)} min</span></div>
+      <p class="cliente"><b>${escapeHTML(p.cliente_nome)}</b> · ${escapeHTML(formatarTelefoneDigitado(String(p.cliente_telefone).replace(/^55(?=\d{10,11}$)/, '')))}</p>
+      <p class="endereco">📍 ${escapeHTML(p.endereco_entrega || '')}</p>
+      ${linksCliente(p)}
+      ${textoPagamento(p)}
+      ${p.observacoes ? `<p class="obs"><b>Obs.:</b> ${escapeHTML(p.observacoes)}</p>` : ''}
+      ${itensHTML(p)}
+      <div class="acoes-entrega">
+        <button type="button" class="btn btn-primary" data-entregue="${p.id}">✅ Entregue</button>
+        <button type="button" class="link-acao perigo" data-devolver="${p.id}">Não consegui entregar</button>
+      </div>
+    </article>`;
+}
+
+function cardPronto(p) {
+  return `
+    <article class="entrega pronta" data-id="${p.id}">
+      <div class="entrega-topo"><span class="num">#${p.id}</span><span class="bairro">${escapeHTML(p.bairro_nome || '')}</span>
+        <span class="tempo">pronto há ${minutos(p.atualizado_em)} min</span></div>
+      <p class="endereco">📍 ${escapeHTML(p.endereco_entrega || '')}</p>
+      ${textoPagamento(p)}
+      ${itensHTML(p)}
+      <button type="button" class="btn btn-dark btn-block" data-sair="${p.id}">🛵 Peguei, saindo para entrega</button>
+    </article>`;
+}
+
+function render() {
+  const p = painel;
+  document.getElementById('nomeEntregador').textContent = p.entregador_nome;
+  document.getElementById('entreguesHoje').textContent = p.entregues_hoje;
+  document.getElementById('taxasHoje').textContent = formatPrice(p.taxas_hoje);
+  document.getElementById('qtdMinhas').textContent = p.minhas.length;
+  document.getElementById('qtdProntos').textContent = p.prontos.length;
+  document.getElementById('qtdCozinha').textContent = p.na_cozinha.length;
+  document.getElementById('listaMinhas').innerHTML = p.minhas.length ? p.minhas.map(cardMinha).join('')
+    : '<p class="vazio">Nenhuma entrega com você agora.</p>';
+  document.getElementById('listaProntos').innerHTML = p.prontos.length ? p.prontos.map(cardPronto).join('')
+    : '<p class="vazio">Nenhum pedido esperando entregador.</p>';
+  document.getElementById('listaCozinha').innerHTML = p.na_cozinha.length ? p.na_cozinha.map(c =>
+    `<li><span class="num">#${c.id}</span> ${escapeHTML(c.bairro_nome || '')} <span class="estado">${STATUS_COZINHA[c.status] || c.status}</span></li>`).join('')
+    : '<li class="vazio">Nada na cozinha agora.</li>';
+  document.title = `${p.prontos.length ? `(${p.prontos.length}) ` : ''}Entregador — BRASA`;
+}
+
+async function carregarPainel() {
+  if (!sessaoEntregador()) return;
+  try {
+    painel = await apiEntregador('/entregador/painel');
+    render();
+  } catch (e) {
+    if (e.message !== 'Acesso expirado') showToast(e.message, 4000);
+  }
+}
+
+/* ---------- Ações ---------- */
+
+document.getElementById('telaPainel').addEventListener('click', async (e) => {
+  const sair = e.target.closest('[data-sair]');
+  const entregue = e.target.closest('[data-entregue]');
+  const devolver = e.target.closest('[data-devolver]');
+
+  if (sair) {
+    sair.disabled = true;
+    try {
+      await apiEntregador(`/entregador/pedidos/${sair.dataset.sair}/sair`, { method: 'POST' });
+      showToast(`Pedido #${sair.dataset.sair} é seu. Boa entrega! 🛵`);
+      document.getElementById('avisoPronto').hidden = true;
+    } catch (err) {
+      showToast(err.message, 4000);
+    }
+    await carregarPainel();
+  }
+
+  if (entregue) {
+    entregaAberta = painel.minhas.find(p => p.id === Number(entregue.dataset.entregue));
+    if (!entregaAberta) return;
+    document.getElementById('entregueTitulo').textContent = `Entregar pedido #${entregaAberta.id}`;
+    document.getElementById('entregueTexto').innerHTML = entregaAberta.pago
+      ? 'O pedido já estava pago. Confirme a entrega.'
+      : `Recebeu <b>${formatPrice(entregaAberta.total)}</b> do cliente?`;
+    document.getElementById('btnRecebi').hidden = entregaAberta.pago;
+    document.getElementById('btnSemReceber').textContent = entregaAberta.pago ? 'Confirmar entrega' : 'Entregue sem receber';
+    document.getElementById('dlgEntregue').showModal();
+  }
+
+  if (devolver) {
+    if (!confirm(`Não conseguiu entregar o pedido #${devolver.dataset.devolver}? Ele volta para a cozinha como "Pronto".`)) return;
+    try {
+      await apiEntregador(`/entregador/pedidos/${devolver.dataset.devolver}/devolver`, { method: 'POST' });
+      showToast('Pedido devolvido para a cozinha');
+    } catch (err) {
+      showToast(err.message, 4000);
+    }
+    await carregarPainel();
+  }
+});
+
+document.getElementById('dlgEntregue').addEventListener('click', async (e) => {
+  if (e.target.closest('[data-fechar]')) { e.target.closest('dialog').close(); return; }
+  const botao = e.target.closest('[data-recebi]');
+  if (!botao || !entregaAberta) return;
+  document.getElementById('dlgEntregue').close();
+  try {
+    await apiEntregador(`/entregador/pedidos/${entregaAberta.id}/entregue`, {
+      method: 'POST', body: { recebi_pagamento: botao.dataset.recebi === '1' },
+    });
+    showToast(`Pedido #${entregaAberta.id} entregue ✅`);
+  } catch (err) {
+    showToast(err.message, 4000);
+  }
+  await carregarPainel();
+});
+
+document.getElementById('btnAtualizar').addEventListener('click', carregarPainel);
+document.getElementById('avisoPronto').addEventListener('click', (e) => {
+  e.currentTarget.hidden = true;
+  document.getElementById('listaProntos').scrollIntoView({ behavior: 'smooth', block: 'start' });
+});
+
+/* ---------- Tempo real ---------- */
+
+let timerRecarga = null;
+const tempoReal = conectarTempoReal({
+  caminho: '/ws/entregador',
+  obterToken: () => (sessaoEntregador() || {}).token,
+  aoExpirar: () => sairEntregador('Seu acesso expirou. Entre novamente.'),
+  onAbrir: carregarPainel,
+  onMensagem: (msg) => {
+    if (msg.evento === 'pedido_pronto') {
+      alertaPronto();
+      const aviso = document.getElementById('avisoPronto');
+      aviso.innerHTML = `🔔 <b>Pedido #${msg.pedido.id} pronto</b> — ${escapeHTML(msg.pedido.bairro_nome || '')}. Toque para ver`;
+      aviso.hidden = false;
+    }
+    clearTimeout(timerRecarga);
+    timerRecarga = setTimeout(carregarPainel, 250);
+  },
+});
+
+// tempos ("há X min") atualizados sem esperar evento
+setInterval(() => painel && render(), 30000);
+
+function entrar() {
+  document.getElementById('telaLogin').hidden = true;
+  document.getElementById('telaPainel').hidden = false;
+  document.getElementById('usuarioBox').hidden = false;
+  document.getElementById('nomeEntregador').textContent = (sessaoEntregador() || {}).nome || '';
+  manterTelaLigada();
+  tempoReal.iniciar();
+}
+
+if (sessaoEntregador()) entrar();
+</script>
+
+</body>
+</html>

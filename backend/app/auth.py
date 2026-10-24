@@ -80,3 +80,51 @@ def exigir_admin(usuario: models.Usuario = Depends(get_current_user)) -> models.
             detail="Acesso restrito ao dono/gerente",
         )
     return usuario
+
+
+# ---------------------------------------------------------------------
+# Entregadores: login próprio (celular + senha) e token separado da equipe.
+# O "sub" do token é "entregador:<id>": usuario_do_token não consegue lê-lo como
+# usuário, então um entregador nunca acessa as rotas da cozinha/gerencial.
+# ---------------------------------------------------------------------
+
+PREFIXO_ENTREGADOR = "entregador:"
+
+
+def criar_token_entregador(entregador: models.Entregador) -> str:
+    expira_em = datetime.utcnow() + timedelta(minutes=JWT_EXPIRE_MINUTES)
+    payload = {
+        "sub": f"{PREFIXO_ENTREGADOR}{entregador.id}",
+        "nome": entregador.nome,
+        "cargo": "entregador",
+        "exp": expira_em,
+    }
+    return jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
+
+
+def entregador_do_token(token: str, db: Session) -> Optional[models.Entregador]:
+    try:
+        payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+        sub = str(payload.get("sub") or "")
+        if not sub.startswith(PREFIXO_ENTREGADOR):
+            return None
+        entregador_id = int(sub[len(PREFIXO_ENTREGADOR):])
+    except (jwt.PyJWTError, TypeError, ValueError):
+        return None
+    entregador = db.get(models.Entregador, entregador_id)
+    if entregador is None or not entregador.ativo or not entregador.senha_hash:
+        return None  # desativado ou acesso revogado pelo dono: o token deixa de valer
+    return entregador
+
+
+def get_entregador_atual(
+    token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)
+) -> models.Entregador:
+    entregador = entregador_do_token(token, db)
+    if entregador is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Acesso de entregador inválido ou expirado",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    return entregador

@@ -11,7 +11,7 @@ from .database import engine, SessionLocal
 from . import models
 from .auth import hash_senha
 from .migracoes import migrar_banco
-from .routers import cardapio, auth, pedidos, gerencial, estoque, configuracoes
+from .routers import cardapio, auth, pedidos, gerencial, estoque, configuracoes, entregador
 
 app = FastAPI(title="BRASA Pizzaria API", version="1.0.0")
 
@@ -31,6 +31,7 @@ app.include_router(pedidos.router)
 app.include_router(gerencial.router)
 app.include_router(estoque.router)
 app.include_router(configuracoes.router)
+app.include_router(entregador.router)
 
 
 def seed_data(db: Session):
